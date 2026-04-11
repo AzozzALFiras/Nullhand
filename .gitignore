@@ -1,0 +1,35 @@
+# Build output
+/nullhand
+*.exe
+*.test
+*.out
+
+# Go
+/vendor/
+/bin/
+coverage.out
+coverage.html
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Local config (contains Telegram token + API keys)
+config.json
+/.nullhand/
+/.claude
