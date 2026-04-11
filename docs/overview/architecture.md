@@ -1,0 +1,71 @@
+# Architecture
+
+## High-Level Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                        YOU                              │
+│                (Telegram on any device)                 │
+└────────────────────────┬────────────────────────────────┘
+                         │ send message
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│                  Telegram Servers                       │
+│              (api.telegram.org)                         │
+└────────────────────────┬────────────────────────────────┘
+                         │ polling (long-poll)
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│                  NULLHAND (your Mac)                    │
+│                                                         │
+│  ┌─────────────┐    ┌──────────────┐   ┌────────────┐  │
+│  │  Telegram   │───▶│    Router    │──▶│  AI Agent  │  │
+│  │   Client    │    │              │   │            │  │
+│  │  (polling)  │◀───│ manual cmd?  │   └─────┬──────┘  │
+│  └─────────────┘    │ ai command?  │         │ tools   │
+│                     └──────────────┘         ▼         │
+│                     ┌────────────────────────────────┐  │
+│                     │           Tools Layer          │  │
+│                     │  mouse/keyboard  (osascript)   │  │
+│                     │  screenshot  (screencapture)   │  │
+│                     │  open apps       (open -a)     │  │
+│                     │  shell           (os/exec)     │  │
+│                     │  files           (os.ReadFile) │  │
+│                     └────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Project Structure
+
+```
+Nullhand/
+├── cmd/
+│   └── nullhand/
+│       ├── main.go          — entry point, first-run detection
+│       ├── setup.go         — interactive setup wizard
+│       └── start.go         — start the bot
+├── internal/
+│   ├── config/              — load, save, validate config
+│   ├── telegram/            — polling, send message, send photo
+│   ├── router/              — parse and dispatch commands
+│   ├── ai/
+│   │   ├── provider.go      — Provider interface
+│   │   ├── agent.go         — agent loop logic
+│   │   ├── claude/
+│   │   ├── openai/
+│   │   ├── gemini/
+│   │   ├── deepseek/
+│   │   └── grok/
+│   ├── tools/
+│   │   ├── registry.go
+│   │   ├── mouse.go
+│   │   ├── keyboard.go
+│   │   ├── screen.go
+│   │   ├── apps.go
+│   │   ├── shell.go
+│   │   └── files.go
+│   └── safety/
+├── docs/
+├── go.mod
+└── README.md
+```
