@@ -2,14 +2,16 @@ package intents
 
 import "strings"
 
-// appNameMap maps common names (any language) to the correct macOS app name.
-var appNameMap = map[string]string{
+// AppNameMap maps common names (any language) to the correct macOS app name.
+// Exported so the entity extractor in the parent package can use it.
+var AppNameMap = map[string]string{
 	// English
 	"terminal": "Terminal", "term": "Terminal", "iterm": "iTerm",
 	"safari": "Safari", "chrome": "Google Chrome", "google chrome": "Google Chrome",
 	"firefox": "Firefox", "brave": "Brave Browser", "arc": "Arc",
 	"vscode": "Visual Studio Code", "vs code": "Visual Studio Code", "code": "Visual Studio Code",
 	"cursor": "Cursor",
+	"antigravity": "Antigravity", "anti gravity": "Antigravity", "ag": "Antigravity",
 	"whatsapp": "WhatsApp", "wa": "WhatsApp",
 	"slack": "Slack", "discord": "Discord",
 	"telegram": "Telegram", "tg": "Telegram",
@@ -41,7 +43,7 @@ var appNameMap = map[string]string{
 // ResolveAppName normalizes an app name using the map, or returns it as-is.
 func ResolveAppName(raw string) string {
 	lower := strings.ToLower(strings.TrimSpace(raw))
-	if mapped, ok := appNameMap[lower]; ok {
+	if mapped, ok := AppNameMap[lower]; ok {
 		return mapped
 	}
 	return strings.TrimSpace(raw)

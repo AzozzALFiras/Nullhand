@@ -133,21 +133,31 @@ func buildModifiers(mods []string) string {
 }
 
 // keyCodeMap maps readable key names to macOS virtual key codes.
+// ALL letters and numbers are included so that shortcuts like cmd+p
+// work correctly regardless of the active keyboard layout (Arabic, etc.)
 var keyCodeMap = map[string]int{
-	"enter":     36,
-	"return":    36,
-	"escape":    53,
-	"tab":       48,
-	"space":     49,
-	"delete":    51,
-	"backspace": 51,
-	"up":        126,
-	"down":      125,
-	"left":      123,
-	"right":     124,
-	"f1":        122, "f2": 120, "f3": 99, "f4": 118,
+	// Special keys
+	"enter": 36, "return": 36,
+	"escape": 53, "tab": 48, "space": 49,
+	"delete": 51, "backspace": 51,
+	"up": 126, "down": 125, "left": 123, "right": 124,
+	// Function keys
+	"f1": 122, "f2": 120, "f3": 99, "f4": 118,
 	"f5": 96, "f6": 97, "f7": 98, "f8": 100,
 	"f9": 101, "f10": 109, "f11": 103, "f12": 111,
+	// Letters (A-Z) — key codes are layout-independent
+	"a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3,
+	"g": 5, "h": 4, "i": 34, "j": 38, "k": 40, "l": 37,
+	"m": 46, "n": 45, "o": 31, "p": 35, "q": 12, "r": 15,
+	"s": 1, "t": 17, "u": 32, "v": 9, "w": 13, "x": 7,
+	"y": 16, "z": 6,
+	// Numbers (0-9)
+	"0": 29, "1": 18, "2": 19, "3": 20, "4": 21,
+	"5": 23, "6": 22, "7": 26, "8": 28, "9": 25,
+	// Punctuation
+	"-": 27, "=": 24, "[": 33, "]": 30,
+	";": 41, "'": 39, ",": 43, ".": 47, "/": 44,
+	"`": 50, "\\": 42,
 }
 
 func runAppleScript(script string) error {
