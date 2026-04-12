@@ -8,51 +8,88 @@ import (
 	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents"
 )
 
+// terminalNames matches any way of saying "terminal" in English or Arabic.
+const terminalNames = `(?:terminal|term|iterm|the\s+terminal|التيرمنل|الطرفية|تيرمنل|الترمنل|طرفية)`
+
+// actionWords matches optional action words between terminal and command.
+const actionWords = `(?:and\s+)?(?:run|do|execute|type|write|enter|perform|use|try|نفذ|شغل|اكتب|نفّذ|سوي|جرب|استخدم)?`
+
 func init() {
 	intents.RegisterSmart(
-		// ── Open terminal and run command ─────────────────────────────
-		// "open terminal and run ls -la" / "افتح التيرمنل ونفذ ls -la"
-		// "افتح التيرمنل واكتب git status" / "open term and execute npm install"
+		// ── Open terminal + anything = run it ─────────────────────────
+		// "open terminal and do ls"
+		// "open terminal and ls -la"
+		// "open terminal ls"
+		// "open terminal run git status"
+		// "افتح التيرمنل ونفذ ls -la"
+		// "افتح التيرمنل ls"
+		// "افتح التيرمنل واكتب git pull"
+		// "launch terminal and try npm install"
 		intents.Intent{
-			Re: regexp.MustCompile(`(?i)^(?:open|launch|افتح|شغل)\s+(?:terminal|term|iterm|التيرمنل|الطرفية|تيرمنل|الترمنل)\s+(?:and\s+(?:run|execute|type|write)|و\s*(?:نفذ|شغل|اكتب|نفّذ|اكتب\s+فيه)|ثم\s+(?:نفذ|شغل|اكتب))\s+(.+?)$`),
-			Build: func(m []string) []aimodel.ToolCall {
-				cmd := strings.TrimSpace(m[1])
-				return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
-					"name":        "terminal_run_command",
-					"params_json": intents.MustJSON(map[string]string{"command": cmd}),
-				})}
-			},
+			Re: regexp.MustCompile(`(?i)^(?:open|launch|start|افتح|شغل|شغّل)\s+` + terminalNames + `\s+(?:` + actionWords + `\s+)?(.+?)$`),
+			Build: buildTerminalRun,
 		},
 
-		// ── Run command in terminal (without "open") ─────────────────
-		// "run ls -la in terminal" / "نفذ git pull في التيرمنل"
+		// ── "terminal {cmd}" (shortest form) ─────────────────────────
+		// "terminal ls" / "terminal git status" / "تيرمنل ls -la"
 		intents.Intent{
-			Re: regexp.MustCompile(`(?i)^(?:run|execute|نفذ|شغل)\s+(.+?)\s+(?:in\s+(?:terminal|term)|في\s+(?:التيرمنل|الطرفية|تيرمنل))$`),
-			Build: func(m []string) []aimodel.ToolCall {
-				cmd := strings.TrimSpace(m[1])
-				return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
-					"name":        "terminal_run_command",
-					"params_json": intents.MustJSON(map[string]string{"command": cmd}),
-				})}
-			},
+			Re: regexp.MustCompile(`(?i)^` + terminalNames + `\s+` + actionWords + `\s*(.+?)$`),
+			Build: buildTerminalRun,
+		},
+
+		// ── "{cmd} in terminal" ───────────────────────────────────────
+		// "run ls in terminal" / "do git pull in terminal"
+		// "نفذ git pull في التيرمنل" / "ls -la في التيرمنل"
+		intents.Intent{
+			Re: regexp.MustCompile(`(?i)^` + actionWords + `\s*(.+?)\s+(?:in|on|في|بـ|داخل)\s+` + terminalNames + `$`),
+			Build: buildTerminalRun,
+		},
+
+		// ── "in terminal {cmd}" ──────────────────────────────────────
+		// "in terminal run ls" / "في التيرمنل نفذ git pull"
+		// "في التيرمنل ls -la"
+		intents.Intent{
+			Re: regexp.MustCompile(`(?i)^(?:in|on|في|بـ|داخل)\s+` + terminalNames + `\s+` + actionWords + `\s*(.+?)$`),
+			Build: buildTerminalRun,
 		},
 	)
 
 	intents.RegisterSimple(
 		// ── Terminal cancel ───────────────────────────────────────────
+		// "terminal cancel" / "cancel terminal" / "الغ التيرمنل"
 		intents.Intent{
-			Re: regexp.MustCompile(`(?i)^(?:terminal\s+cancel|cancel\s+terminal|الغ\s+(?:التيرمنل|الامر))\.?$`),
+			Re: regexp.MustCompile(`(?i)^(?:` + terminalNames + `\s+(?:cancel|stop|الغ|اوقف)|(?:cancel|stop|الغ|اوقف)\s+` + terminalNames + `)\.?$`),
 			Build: func(m []string) []aimodel.ToolCall {
 				return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{"name": "terminal_cancel"})}
 			},
 		},
 
 		// ── Terminal clear ───────────────────────────────────────────
+		// "terminal clear" / "clear terminal" / "امسح التيرمنل"
 		intents.Intent{
-			Re: regexp.MustCompile(`(?i)^(?:clear\s+terminal|terminal\s+clear|امسح\s+(?:التيرمنل|الشاشة)|نظف\s+(?:التيرمنل|الشاشة))\.?$`),
+			Re: regexp.MustCompile(`(?i)^(?:` + terminalNames + `\s+(?:clear|clean|امسح|نظف|مسح)|(?:clear|clean|امسح|نظف|مسح)\s+` + terminalNames + `)\.?$`),
 			Build: func(m []string) []aimodel.ToolCall {
 				return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{"name": "terminal_clear"})}
 			},
 		},
 	)
+}
+
+// buildTerminalRun is the shared builder for all terminal run patterns.
+func buildTerminalRun(m []string) []aimodel.ToolCall {
+	// Find the last non-empty capture group (the command).
+	cmd := ""
+	for i := len(m) - 1; i >= 1; i-- {
+		if strings.TrimSpace(m[i]) != "" {
+			cmd = strings.TrimSpace(m[i])
+			break
+		}
+	}
+	if cmd == "" {
+		return nil
+	}
+	return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
+		"name":        "terminal_run_command",
+		"params_json": intents.MustJSON(map[string]string{"command": cmd}),
+	})}
 }
