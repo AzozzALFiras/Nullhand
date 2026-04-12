@@ -65,6 +65,17 @@ func (c *Client) SetMyCommands(commands []BotCommand) error {
 	return c.post("setMyCommands", payload)
 }
 
+// InlineKeyboardButton is a single button in an inline keyboard.
+type InlineKeyboardButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data,omitempty"`
+}
+
+// InlineKeyboardMarkup is a grid of inline buttons attached to a message.
+type InlineKeyboardMarkup struct {
+	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
+}
+
 // SendMessage sends a plain text message to chatID.
 func (c *Client) SendMessage(chatID int64, text string) error {
 	payload := map[string]any{
@@ -73,6 +84,69 @@ func (c *Client) SendMessage(chatID int64, text string) error {
 		"parse_mode": "HTML",
 	}
 	return c.post("sendMessage", payload)
+}
+
+// SendMessageWithKeyboard sends a text message with inline keyboard buttons.
+// Returns the message ID of the sent message for later editing.
+func (c *Client) SendMessageWithKeyboard(chatID int64, text string, keyboard *InlineKeyboardMarkup) (int, error) {
+	payload := map[string]any{
+		"chat_id":      chatID,
+		"text":         text,
+		"parse_mode":   "HTML",
+		"reply_markup": keyboard,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("sendMessage: marshal: %w", err)
+	}
+
+	url := fmt.Sprintf("%s%s/sendMessage", apiBase, c.token)
+	resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(data))
+	if err != nil {
+		return 0, fmt.Errorf("sendMessage: request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			MessageID int `json:"message_id"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("sendMessage: decode: %w", err)
+	}
+	if !result.OK {
+		return 0, fmt.Errorf("sendMessage: telegram returned ok=false")
+	}
+	return result.Result.MessageID, nil
+}
+
+// EditMessage edits an existing message's text and keyboard.
+func (c *Client) EditMessage(chatID int64, messageID int, text string, keyboard *InlineKeyboardMarkup) error {
+	payload := map[string]any{
+		"chat_id":    chatID,
+		"message_id": messageID,
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+	if keyboard != nil {
+		payload["reply_markup"] = keyboard
+	}
+	return c.post("editMessageText", payload)
+}
+
+// AnswerCallbackQuery acknowledges a callback query to remove the loading
+// indicator on the button. Optional text shows a brief notification.
+func (c *Client) AnswerCallbackQuery(callbackID string, text string) error {
+	payload := map[string]any{
+		"callback_query_id": callbackID,
+	}
+	if text != "" {
+		payload["text"] = text
+	}
+	return c.post("answerCallbackQuery", payload)
 }
 
 // SendPhoto sends a PNG image with an optional caption to chatID.

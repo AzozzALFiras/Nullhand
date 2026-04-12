@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	tgfmt "github.com/AzozzALFiras/nullhand/internal/view/telegram"
 	agentvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/agent"
 	cmdvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/command"
+	menuvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/menu"
 	routervm "github.com/AzozzALFiras/nullhand/internal/viewmodel/router"
 )
 
@@ -37,6 +39,7 @@ type ViewModel struct {
 	router  *routervm.ViewModel
 	cmdExec *cmdvm.ViewModel
 	agent   *agentvm.ViewModel
+	menu    *menuvm.ViewModel
 
 	stopMu  sync.Mutex
 	stopCtx context.CancelFunc
@@ -66,6 +69,7 @@ func New(cfg *configmodel.Config) (*ViewModel, error) {
 		router:  routervm.New(),
 		cmdExec: cmdvm.New(),
 		agent:   agentvm.New(aiProvider, recipes),
+		menu:    menuvm.New(),
 		pending: make(map[int64]chan string),
 	}
 
@@ -116,6 +120,12 @@ func (vm *ViewModel) Stop() {
 
 // handleUpdate is called by the poller for every incoming Telegram update.
 func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
+	// Handle inline keyboard button presses.
+	if update.CallbackQuery != nil {
+		vm.handleCallback(update.CallbackQuery)
+		return
+	}
+
 	if update.Message == nil {
 		return
 	}
@@ -129,6 +139,18 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 	// consume the message as the confirmation instead of routing it normally.
 	if vm.deliverPendingConfirmation(msg.Chat.ID, msg.Text) {
 		return
+	}
+
+	// If a menu is active and user sends a number, treat it as menu selection.
+	if vm.menu.IsActive(msg.Chat.ID) {
+		text := strings.TrimSpace(msg.Text)
+		var num int
+		if _, err := fmt.Sscanf(text, "%d", &num); err == nil && num > 0 {
+			if err := vm.menu.HandleNumberSelection(vm.tg, msg.Chat.ID, num); err != nil {
+				log.Printf("menu number selection error: %v", err)
+			}
+			return
+		}
 	}
 
 	route := vm.router.Dispatch(msg)
@@ -206,8 +228,14 @@ func (vm *ViewModel) runAgent(chatID int64, task string) {
 		return vm.waitForConfirmation(ctx, chatID, 60*time.Second)
 	}
 
+	// Browse callback: when the AI calls browse_folder, open the interactive
+	// file browser with inline keyboard buttons.
+	browse := func(path string) {
+		vm.BrowseFolder(chatID, path)
+	}
+
 	// Intentionally silent: no per-tool progress messages.
-	result, err := vm.agent.Run(ctx, task, nil, sendPhoto, manualFocus)
+	result, err := vm.agent.Run(ctx, task, nil, sendPhoto, manualFocus, browse)
 	if err != nil {
 		if ctx.Err() != nil {
 			return // user stopped the task
@@ -268,6 +296,26 @@ func (vm *ViewModel) send(chatID int64, text string) {
 	}
 	if err := vm.tg.SendMessage(chatID, text); err != nil {
 		log.Printf("sendMessage error: %v", err)
+	}
+}
+
+// handleCallback processes inline keyboard button presses.
+func (vm *ViewModel) handleCallback(cb *msgmodel.CallbackQuery) {
+	if cb.From == nil || !vm.guard.IsAllowed(cb.From.ID) {
+		return
+	}
+
+	chatID := cb.Message.Chat.ID
+
+	if err := vm.menu.HandleBrowseCallback(vm.tg, chatID, cb.ID, cb.Data); err != nil {
+		log.Printf("menu callback error: %v", err)
+	}
+}
+
+// BrowseFolder opens the interactive file browser for a path.
+func (vm *ViewModel) BrowseFolder(chatID int64, path string) {
+	if err := vm.menu.BrowsePath(vm.tg, chatID, path); err != nil {
+		vm.send(chatID, fmt.Sprintf("❌ %v", err))
 	}
 }
 

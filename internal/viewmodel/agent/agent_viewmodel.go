@@ -37,6 +37,10 @@ type PhotoFunc func(data []byte, caption string) error
 // return the reply text. Errors indicate cancellation or timeout.
 type ManualFocusFunc func(reason string) (string, error)
 
+// BrowseFunc is called when the AI invokes browse_folder. The
+// implementation opens an interactive file browser in Telegram.
+type BrowseFunc func(path string)
+
 // ViewModel orchestrates the multi-step AI agent loop.
 type ViewModel struct {
 	provider  aisvc.Provider
@@ -53,6 +57,9 @@ type ViewModel struct {
 	// manualFocus is the callback used by request_manual_focus. Set per-Run
 	// by the caller, may be nil.
 	manualFocus ManualFocusFunc
+
+	// browse is the callback used by browse_folder. Set per-Run by the caller.
+	browse BrowseFunc
 }
 
 // New creates an agent ViewModel with the given AI provider and recipe service.
@@ -168,8 +175,9 @@ To read Terminal output: use analyze_screenshot (vision) or take_screenshot.
 // progress is called after each tool execution (may be nil to suppress updates).
 // sendPhoto delivers screenshots directly to the user.
 // manualFocus is invoked when the AI calls request_manual_focus (may be nil).
-func (vm *ViewModel) Run(ctx context.Context, task string, progress ProgressFunc, sendPhoto PhotoFunc, manualFocus ManualFocusFunc) (string, error) {
+func (vm *ViewModel) Run(ctx context.Context, task string, progress ProgressFunc, sendPhoto PhotoFunc, manualFocus ManualFocusFunc, browse BrowseFunc) (string, error) {
 	vm.manualFocus = manualFocus
+	vm.browse = browse
 	history := []aimodel.Message{
 		{
 			Role:  aimodel.RoleSystem,
@@ -503,6 +511,16 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 		}
 		return textParts("clipboard set"), nil
 
+	case "browse_folder":
+		path := args["path"]
+		if path == "" {
+			path = "~"
+		}
+		if vm.browse != nil {
+			vm.browse(path)
+		}
+		return textParts(fmt.Sprintf("opened file browser at %s", path)), nil
+
 	case "wait":
 		var ms int
 		fmt.Sscanf(args["ms"], "%d", &ms)
@@ -584,6 +602,14 @@ func (vm *ViewModel) buildToolDefinitions() []aimodel.ToolDefinition {
 			Description: "Read and return the contents of a file.",
 			Parameters: []aimodel.ToolParameter{
 				{Name: "path", Type: "string", Description: "Absolute or ~ path to the file", Required: true},
+			},
+		},
+		{
+			Name: "browse_folder",
+			Description: "Open an interactive file browser in Telegram with buttons. " +
+				"The user can navigate folders, open projects in VS Code, run git commands, etc.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "path", Type: "string", Description: "Directory path to browse (supports ~, documents, etc.)", Required: true},
 			},
 		},
 		{

@@ -9,6 +9,31 @@ import (
 )
 
 func init() {
+	intents.RegisterSmart(
+		// ── Browse folder ────────────────────────────────────────────
+		// Extremely flexible matching - any mention of browsing/listing + a path
+		intents.Intent{
+			Re: regexp.MustCompile(`(?i)^(?:` +
+				// English variations (including typos)
+				`(?:list|show|open|browse|browser|brows|get|view|display|see|check)\s+` +
+				`(?:(?:the\s+)?(?:folders?|files?|directory|dir|contents?|items?)\s+(?:in|of|at|from|for)\s+)?` +
+				`|` +
+				// "folders in X" / "files in X"
+				`(?:folders?|files?|directory|dir)\s+(?:in|of|at)\s+` +
+				`|` +
+				// Arabic variations
+				`(?:تصفح|استعرض|اعرض|عرض|افتح|شوف|وريني)\s+(?:(?:المجلدات|الملفات|محتوى|قائمة)\s+(?:في|بـ|من)\s+)?` +
+				`|` +
+				// "قائمة المجلدات في X"
+				`قائمة\s+(?:المجلدات|الملفات)\s+(?:في|بـ|من)\s+` +
+				`)(.+?)$`),
+			Build: func(m []string) []aimodel.ToolCall {
+				path := strings.TrimSpace(m[1])
+				return []aimodel.ToolCall{intents.ToolCall("browse_folder", map[string]string{"path": path})}
+			},
+		},
+	)
+
 	intents.RegisterSimple(
 		// ── Screenshot ───────────────────────────────────────────────
 		intents.Intent{
