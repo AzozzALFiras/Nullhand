@@ -49,6 +49,33 @@ var allowedCommands = map[string]bool{
 	"swift":     true,
 	"make":      true,
 	"cargo":     true,
+	// Dev tools
+	"pip":       true,
+	"pip3":      true,
+	"docker":    true,
+	"ruby":      true,
+	"gem":       true,
+	"java":      true,
+	"javac":     true,
+	"flutter":   true,
+	"pod":       true,
+	"xcodebuild": true,
+	// System utilities
+	"which":     true,
+	"env":       true,
+	"printenv":  true,
+	"killall":   true,
+	"lsof":      true,
+	"chmod":     true,
+	"rm":        true,
+	"ln":        true,
+	// Archive
+	"tar":       true,
+	"zip":       true,
+	"unzip":     true,
+	// Network
+	"ssh":       true,
+	"scp":       true,
 }
 
 // Run executes a whitelisted shell command and returns combined stdout+stderr.

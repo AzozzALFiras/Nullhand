@@ -43,7 +43,9 @@ func TypeAndHold(text string) (string, bool, error) {
 	}
 	time.Sleep(60 * time.Millisecond)
 
-	if err := runAppleScript(`tell application "System Events" to keystroke "v" using command down`); err != nil {
+	// Use key code 9 (V) instead of keystroke "v" — keystroke breaks when
+	// the macOS keyboard layout is non-Latin (Arabic, Chinese, etc.)
+	if err := runAppleScript(`tell application "System Events" to key code 9 using command down`); err != nil {
 		return prev, hadPrev, fmt.Errorf("keyboard: paste: %w", err)
 	}
 	time.Sleep(180 * time.Millisecond)

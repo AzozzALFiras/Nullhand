@@ -25,6 +25,9 @@ type Provider struct {
 	client *http.Client
 }
 
+// SupportsVision returns true — Claude supports image content blocks.
+func (p *Provider) SupportsVision() bool { return true }
+
 // New creates a Claude provider. If model is empty, uses the default.
 func New(apiKey, model string) *Provider {
 	if model == "" {

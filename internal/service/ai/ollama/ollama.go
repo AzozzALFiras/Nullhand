@@ -15,11 +15,18 @@ const (
 	DefaultModel = "qwen2.5:3b"
 )
 
+// visionModels lists Ollama model name prefixes that support image inputs.
+var visionModels = []string{
+	"qwen3-vl", "qwen2.5vl", "qwen2-vl", "llava", "llama3.2-vision",
+	"moondream", "gemma3", "minicpm-v", "internvl",
+}
+
 // Provider implements ai.Provider by talking to a local Ollama server via
 // its OpenAI-compatible /v1/chat/completions endpoint. Developers can point
 // it at any Ollama instance (local or remote) by setting baseURL in config.
 type Provider struct {
 	inner *openai.Provider
+	model string
 }
 
 // New creates an Ollama provider.
@@ -36,7 +43,18 @@ func New(baseURL, model string) *Provider {
 		model = DefaultModel
 	}
 	// Ollama does not check the API key but openai.New requires a non-empty one.
-	return &Provider{inner: openai.New("ollama", model, baseURL)}
+	return &Provider{inner: openai.New("ollama", model, baseURL), model: model}
+}
+
+// SupportsVision returns true when the configured model is a known vision model.
+func (p *Provider) SupportsVision() bool {
+	lower := strings.ToLower(p.model)
+	for _, prefix := range visionModels {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Chat delegates to the embedded OpenAI-compatible client.

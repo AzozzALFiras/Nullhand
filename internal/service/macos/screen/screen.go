@@ -13,6 +13,56 @@ func Capture() ([]byte, error) {
 	return captureWithArgs("-x") // -x = no sound
 }
 
+// CaptureForVision takes a full-screen screenshot and resizes it to match
+// the logical screen resolution. On Retina displays, screencapture produces
+// images at physical resolution (e.g. 2880x1800) but click coordinates use
+// logical resolution (e.g. 1440x900). Resizing to logical width ensures
+// pixel coordinates in the image map 1:1 to click coordinates.
+//
+// If maxWidth is provided and smaller than the logical width, the image is
+// resized to maxWidth instead (capping token cost).
+func CaptureResized(maxWidth int) ([]byte, error) {
+	data, err := Capture()
+	if err != nil {
+		return nil, err
+	}
+
+	// Determine target width: logical screen width, capped by maxWidth.
+	targetWidth := maxWidth
+	if logicalW, _, err := Size(); err == nil && logicalW > 0 {
+		if logicalW < targetWidth || targetWidth <= 0 {
+			targetWidth = logicalW
+		}
+	}
+	if targetWidth <= 0 {
+		return data, nil // can't determine size, return full
+	}
+
+	// Write to temp, resize with sips, read back.
+	tmp, err := os.CreateTemp("", "nullhand-resize-*.png")
+	if err != nil {
+		return data, nil // fallback: return full-size
+	}
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+
+	if err := os.WriteFile(tmp.Name(), data, 0644); err != nil {
+		return data, nil
+	}
+
+	sipsArgs := []string{"--resampleWidth", strconv.Itoa(targetWidth), tmp.Name()}
+	if out, err := exec.Command("sips", sipsArgs...).CombinedOutput(); err != nil {
+		_ = out
+		return data, nil // fallback: return full-size
+	}
+
+	resized, err := os.ReadFile(tmp.Name())
+	if err != nil {
+		return data, nil
+	}
+	return resized, nil
+}
+
 // CaptureActive takes a screenshot of the active (frontmost) window.
 func CaptureActive() ([]byte, error) {
 	return captureWithArgs("-x", "-l", frontWindowID())

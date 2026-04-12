@@ -22,6 +22,9 @@ Example: open Safari and type hello and send`
 // use it without any external API.
 type Provider struct{}
 
+// SupportsVision returns false — the local parser is text-only.
+func (p *Provider) SupportsVision() bool { return false }
+
 // New creates a local rule-based provider.
 func New() *Provider { return &Provider{} }
 

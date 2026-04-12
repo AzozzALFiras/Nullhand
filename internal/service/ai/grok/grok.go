@@ -25,6 +25,9 @@ func New(apiKey, model string) *Provider {
 	return &Provider{inner: openai.New(apiKey, model, apiURL)}
 }
 
+// SupportsVision returns true — Grok vision model supports images.
+func (p *Provider) SupportsVision() bool { return true }
+
 // Chat delegates to the OpenAI-compatible implementation.
 func (p *Provider) Chat(ctx context.Context, history []aimodel.Message, tools []aimodel.ToolDefinition) (*aimodel.Response, error) {
 	return p.inner.Chat(ctx, history, tools)

@@ -23,6 +23,9 @@ type Provider struct {
 	client *http.Client
 }
 
+// SupportsVision returns true — Gemini supports inline image data.
+func (p *Provider) SupportsVision() bool { return true }
+
 // New creates a Gemini provider.
 func New(apiKey, model string) *Provider {
 	if model == "" {

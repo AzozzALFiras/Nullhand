@@ -11,8 +11,6 @@ import (
 
 // connectorRe splits a single utterance into sequential segments.
 // It matches English "and" / "then" / "," and Arabic "ثم".
-// Note: Go's RE2 `\b` is ASCII-only, so we require explicit whitespace around
-// the word connectors to avoid matching substrings inside Arabic words.
 var connectorRe = regexp.MustCompile(`(?i)(?:\s*,\s*(?:and|then)?\s*|\s+and\s+|\s+then\s+|\s+ثم\s+)`)
 
 // Parse turns a user utterance into a list of tool calls. Returns nil when
@@ -23,6 +21,12 @@ func Parse(text string) []aimodel.ToolCall {
 		return nil
 	}
 
+	// First try smart intents on the FULL text (they handle multi-step commands).
+	if calls := matchSmart(text); len(calls) > 0 {
+		return calls
+	}
+
+	// Fall back to splitting by connectors and matching simple intents.
 	segments := splitConnectors(text)
 
 	var calls []aimodel.ToolCall
@@ -33,13 +37,21 @@ func Parse(text string) []aimodel.ToolCall {
 		}
 		matched := matchSegment(seg)
 		if len(matched) == 0 {
-			// Any unknown segment fails the whole parse so the caller can
-			// reply with the "not understood" fallback.
 			return nil
 		}
 		calls = append(calls, matched...)
 	}
 	return calls
+}
+
+// matchSmart tries each smart intent against the full text.
+func matchSmart(text string) []aimodel.ToolCall {
+	for _, it := range smartIntents {
+		if m := it.re.FindStringSubmatch(text); m != nil {
+			return it.build(m)
+		}
+	}
+	return nil
 }
 
 // splitConnectors breaks text on "and"/"then"/"," and Arabic equivalents.

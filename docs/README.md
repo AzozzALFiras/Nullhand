@@ -2,7 +2,7 @@
 
 > Your invisible hand on the machine.
 
-Nullhand is a self-hosted macOS remote control agent powered by AI. It runs locally on your Mac and listens for commands via Telegram — giving you full control over your machine from anywhere in the world.
+Nullhand is a **personal-use**, self-hosted macOS remote control agent powered by AI. It runs locally on your Mac and listens for commands via Telegram — giving you full control over your machine from anywhere in the world.
 
 ## Documentation Index
 
@@ -11,11 +11,13 @@ Nullhand is a self-hosted macOS remote control agent powered by AI. It runs loca
 - [Architecture](overview/architecture.md) — High-level system design
 - [How It Works](overview/how-it-works.md) — Telegram polling, local execution, AI loop
 
+### Privacy & AI
+- [Privacy & Local AI](privacy.md) — Privacy model, local vs cloud AI, Ollama setup
+
 ### Features
 - [Manual Mode](features/manual-mode.md) — Direct commands (/click, /type, /screenshot)
 - [AI Agent Mode](features/ai-agent-mode.md) — Natural language tasks powered by AI
 - [Hybrid Mode](features/hybrid-mode.md) — Combining manual and AI control
-- [AI Providers](features/providers.md) — Supported AI providers
 
 ### Setup
 - [Installation](setup/installation.md) — Build and run Nullhand

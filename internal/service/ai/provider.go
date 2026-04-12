@@ -13,3 +13,9 @@ import (
 type Provider interface {
 	Chat(ctx context.Context, history []aimodel.Message, tools []aimodel.ToolDefinition) (*aimodel.Response, error)
 }
+
+// VisionCapable is optionally implemented by providers that can process
+// images in the conversation history (e.g. screenshots for screen analysis).
+type VisionCapable interface {
+	SupportsVision() bool
+}

@@ -24,6 +24,9 @@ type Provider struct {
 	client  *http.Client
 }
 
+// SupportsVision returns true — GPT-4o and compatible models support images.
+func (p *Provider) SupportsVision() bool { return true }
+
 // New creates an OpenAI provider. baseURL can be overridden for compatible APIs.
 func New(apiKey, model, baseURL string) *Provider {
 	if model == "" {
