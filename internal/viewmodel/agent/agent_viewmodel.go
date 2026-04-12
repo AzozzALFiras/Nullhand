@@ -60,6 +60,20 @@ type ViewModel struct {
 
 	// browse is the callback used by browse_folder. Set per-Run by the caller.
 	browse BrowseFunc
+
+	// lastToolCalls stores the tool calls from the last Run for session tracking.
+	lastToolCalls []aimodel.ToolCall
+}
+
+// Provider returns the underlying AI provider (for type assertions).
+func (vm *ViewModel) Provider() aisvc.Provider {
+	return vm.provider
+}
+
+// LastToolCalls returns the tool names and args from the last execution.
+// Used by the bot to update session context.
+func (vm *ViewModel) LastToolCalls() []aimodel.ToolCall {
+	return vm.lastToolCalls
 }
 
 // New creates an agent ViewModel with the given AI provider and recipe service.
@@ -178,6 +192,7 @@ To read Terminal output: use analyze_screenshot (vision) or take_screenshot.
 func (vm *ViewModel) Run(ctx context.Context, task string, progress ProgressFunc, sendPhoto PhotoFunc, manualFocus ManualFocusFunc, browse BrowseFunc) (string, error) {
 	vm.manualFocus = manualFocus
 	vm.browse = browse
+	vm.lastToolCalls = nil
 	history := []aimodel.Message{
 		{
 			Role:  aimodel.RoleSystem,
@@ -214,6 +229,7 @@ func (vm *ViewModel) Run(ctx context.Context, task string, progress ProgressFunc
 		}
 
 		// Execute each tool call and collect results.
+		vm.lastToolCalls = append(vm.lastToolCalls, resp.ToolCalls...)
 		for _, tc := range resp.ToolCalls {
 			log.Printf("agent: tool_call %s args=%v", tc.ToolName, tc.Arguments)
 			parts, toolErr := vm.executeTool(tc, sendPhoto)

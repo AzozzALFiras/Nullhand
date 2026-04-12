@@ -49,7 +49,9 @@ func Run(shortcut, command string) error {
 	}
 	time.Sleep(60 * time.Millisecond)
 
-	if err := runAppleScript(`tell application "System Events" to keystroke "v" using command down`); err != nil {
+	// Use key code 9 (V) instead of keystroke "v" — keystroke breaks when
+	// the macOS keyboard layout is non-Latin (Arabic, Chinese, etc.)
+	if err := runAppleScript(`tell application "System Events" to key code 9 using command down`); err != nil {
 		return fmt.Errorf("palette: paste command: %w", err)
 	}
 	time.Sleep(150 * time.Millisecond)
@@ -80,24 +82,29 @@ func pressShortcut(shortcut string) error {
 
 	modStr := buildModifiers(modifiers)
 
-	// Map special keys to key codes; letters go through keystroke.
+	// Use key codes for ALL keys to avoid keyboard layout issues (Arabic, etc.)
 	if code, ok := specialKeyCodes[key]; ok {
-		script := fmt.Sprintf(
-			`tell application "System Events" to key code %d using {%s}`,
-			code, modStr,
-		)
+		var script string
+		if modStr != "" {
+			script = fmt.Sprintf(`tell application "System Events" to key code %d using {%s}`, code, modStr)
+		} else {
+			script = fmt.Sprintf(`tell application "System Events" to key code %d`, code)
+		}
 		return runAppleScript(script)
 	}
 
-	if len(key) != 1 {
-		return fmt.Errorf("unsupported palette key %q", key)
+	// Single letter — use key code map
+	if code, ok := letterKeyCodes[key]; ok {
+		var script string
+		if modStr != "" {
+			script = fmt.Sprintf(`tell application "System Events" to key code %d using {%s}`, code, modStr)
+		} else {
+			script = fmt.Sprintf(`tell application "System Events" to key code %d`, code)
+		}
+		return runAppleScript(script)
 	}
-	escaped := strings.ReplaceAll(key, `"`, `\"`)
-	script := fmt.Sprintf(
-		`tell application "System Events" to keystroke "%s" using {%s}`,
-		escaped, modStr,
-	)
-	return runAppleScript(script)
+
+	return fmt.Errorf("unsupported palette key %q", key)
 }
 
 func buildModifiers(mods []string) string {
@@ -126,6 +133,20 @@ var specialKeyCodes = map[string]int{
 	"delete": 51, "backspace": 51,
 	"/": 44, "\\": 42,
 	"up": 126, "down": 125, "left": 123, "right": 124,
+	"-": 27, "=": 24, "[": 33, "]": 30,
+	";": 41, "'": 39, ",": 43, ".": 47, "`": 50,
+}
+
+// letterKeyCodes maps letters and numbers to macOS virtual key codes.
+// Layout-independent — works with Arabic, Chinese, or any input source.
+var letterKeyCodes = map[string]int{
+	"a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3,
+	"g": 5, "h": 4, "i": 34, "j": 38, "k": 40, "l": 37,
+	"m": 46, "n": 45, "o": 31, "p": 35, "q": 12, "r": 15,
+	"s": 1, "t": 17, "u": 32, "v": 9, "w": 13, "x": 7,
+	"y": 16, "z": 6,
+	"0": 29, "1": 18, "2": 19, "3": 20, "4": 21,
+	"5": 23, "6": 22, "7": 26, "8": 28, "9": 25,
 }
 
 func runAppleScript(script string) error {

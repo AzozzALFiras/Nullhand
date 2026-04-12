@@ -27,6 +27,7 @@ import (
 	cmdvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/command"
 	menuvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/menu"
 	routervm "github.com/AzozzALFiras/nullhand/internal/viewmodel/router"
+	sessionvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/session"
 )
 
 // ViewModel is the top-level orchestrator: it wires the poller, router,
@@ -40,6 +41,7 @@ type ViewModel struct {
 	cmdExec *cmdvm.ViewModel
 	agent   *agentvm.ViewModel
 	menu    *menuvm.ViewModel
+	session *sessionvm.Manager
 
 	stopMu  sync.Mutex
 	stopCtx context.CancelFunc
@@ -70,6 +72,7 @@ func New(cfg *configmodel.Config) (*ViewModel, error) {
 		cmdExec: cmdvm.New(),
 		agent:   agentvm.New(aiProvider, recipes),
 		menu:    menuvm.New(),
+		session: sessionvm.NewManager(),
 		pending: make(map[int64]chan string),
 	}
 
@@ -214,6 +217,16 @@ func (vm *ViewModel) runAgent(chatID int64, task string) {
 
 	vm.send(chatID, "⏳ Working...")
 
+	// Set session context on the local provider so it can handle
+	// context-dependent commands like bare "ls" in terminal mode.
+	if localProvider, ok := vm.agent.Provider().(*local.Provider); ok {
+		if sess := vm.session.Get(chatID); sess != nil {
+			localProvider.SetSessionContext(sess.ActiveApp, sess.ActiveMode)
+		} else {
+			localProvider.SetSessionContext("", "")
+		}
+	}
+
 	// Photo callback: when the AI calls take_screenshot, the PNG is sent
 	// straight to this chat. The image bytes never reach the AI provider.
 	sendPhoto := func(data []byte, caption string) error {
@@ -236,6 +249,16 @@ func (vm *ViewModel) runAgent(chatID int64, task string) {
 
 	// Intentionally silent: no per-tool progress messages.
 	result, err := vm.agent.Run(ctx, task, nil, sendPhoto, manualFocus, browse)
+
+	// Update session context based on what tools were executed.
+	for _, tc := range vm.agent.LastToolCalls() {
+		app, mode := sessionvm.InferContextFromAction(tc.ToolName, tc.Arguments, "")
+		if app != "" && mode != "" {
+			vm.session.Set(chatID, app, mode, "")
+			break // use the last meaningful action
+		}
+	}
+
 	if err != nil {
 		if ctx.Err() != nil {
 			return // user stopped the task

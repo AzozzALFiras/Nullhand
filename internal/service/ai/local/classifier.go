@@ -36,8 +36,21 @@ type ClassifiedIntent struct {
 	GitOp   string // git operation (push, pull, commit...)
 }
 
+// SessionContext is a minimal context passed from the session manager.
+// Avoids importing the session package (which would cause cycles).
+type SessionContext struct {
+	ActiveApp  string // "Visual Studio Code", "Terminal", etc.
+	ActiveMode string // "terminal", "claude", "browser", "editor"
+}
+
 // Classify analyzes extracted entities and determines the user's intent.
+// If ctx is non-nil, it provides session context for ambiguous commands.
 func Classify(e *Entities) *ClassifiedIntent {
+	return ClassifyWithContext(e, nil)
+}
+
+// ClassifyWithContext analyzes entities with optional session context.
+func ClassifyWithContext(e *Entities, ctx *SessionContext) *ClassifiedIntent {
 	ci := &ClassifiedIntent{}
 
 	// ── Priority 1: App Feature (modifier links two things) ──────────
@@ -178,8 +191,62 @@ func Classify(e *Entities) *ClassifiedIntent {
 	}
 
 	// ── No classification → fall through to simple intents ───────────
+	// But first check if session context can help
 	ci.Type = IntentSimple
 	return ci
+}
+
+// ApplyContext uses session context to handle unrecognized text.
+// Called when Parse() gets no results from both classifier and simple intents.
+// Returns tool calls if context applies, nil otherwise.
+func ApplyContext(text string, ctx *SessionContext) []aimodel.ToolCall {
+	if ctx == nil || ctx.ActiveMode == "" {
+		return nil
+	}
+
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+
+	switch ctx.ActiveMode {
+	case "terminal":
+		// In terminal mode: anything unrecognized = type it as a command
+		return []aimodel.ToolCall{
+			intents.ToolCall("type_text", map[string]string{"text": text}),
+			intents.ToolCall("press_key", map[string]string{"key": "return"}),
+		}
+
+	case "claude":
+		// In claude/chat mode: type the message and send
+		return []aimodel.ToolCall{
+			intents.ToolCall("type_text", map[string]string{"text": text}),
+			intents.ToolCall("press_key", map[string]string{"key": "return"}),
+		}
+
+	case "browser":
+		// In browser mode: if looks like URL, navigate; otherwise search
+		if isLikelyURL(text) {
+			return []aimodel.ToolCall{
+				intents.ToolCall("press_key", map[string]string{"key": "cmd+l"}),
+				intents.ToolCall("wait", map[string]string{"ms": "200"}),
+				intents.ToolCall("type_text", map[string]string{"text": text}),
+				intents.ToolCall("press_key", map[string]string{"key": "return"}),
+			}
+		}
+		return []aimodel.ToolCall{
+			intents.ToolCall("press_key", map[string]string{"key": "cmd+l"}),
+			intents.ToolCall("wait", map[string]string{"ms": "200"}),
+			intents.ToolCall("type_text", map[string]string{"text": text}),
+			intents.ToolCall("press_key", map[string]string{"key": "return"}),
+		}
+	}
+
+	return nil
+}
+
+func isLikelyURL(text string) bool {
+	return strings.Contains(text, ".") && !strings.Contains(text, " ")
 }
 
 // detectIDEFeature determines what IDE feature is being requested.

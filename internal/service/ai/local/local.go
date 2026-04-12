@@ -18,9 +18,12 @@ Combine steps with "and" / "then" / "," — or Arabic "ثم".
 Example: open Safari and type hello and send`
 
 // Provider is a zero-dependency, zero-cost AI that parses user text into
-// tool calls using regex patterns. It ships with Nullhand so developers can
-// use it without any external API.
-type Provider struct{}
+// tool calls using pattern matching and entity extraction.
+type Provider struct {
+	// sessionCtx holds the current session context for context-aware parsing.
+	// Set by SetSessionContext before Chat is called.
+	sessionCtx *SessionContext
+}
 
 // SupportsVision returns false — the local parser is text-only.
 func (p *Provider) SupportsVision() bool { return false }
@@ -28,12 +31,19 @@ func (p *Provider) SupportsVision() bool { return false }
 // New creates a local rule-based provider.
 func New() *Provider { return &Provider{} }
 
+// SetSessionContext sets the session context for the next Chat call.
+// This allows the bot to pass context (e.g. "we're in terminal mode")
+// so the parser can handle ambiguous commands like bare "ls".
+func (p *Provider) SetSessionContext(app, mode string) {
+	if app == "" && mode == "" {
+		p.sessionCtx = nil
+		return
+	}
+	p.sessionCtx = &SessionContext{ActiveApp: app, ActiveMode: mode}
+}
+
 // Chat inspects the conversation history, parses the latest user message,
 // and returns either tool calls to execute or a final text reply.
-//
-// The method is invoked twice per task by the agent loop:
-//  1. First call: [system, user]  → returns tool_calls
-//  2. Second call (after tool execution): [..., tool] → returns "Done."
 func (p *Provider) Chat(_ context.Context, history []aimodel.Message, _ []aimodel.ToolDefinition) (*aimodel.Response, error) {
 	// If the last message is a tool result, the agent already executed our
 	// tool calls — we just need to finish the task.
@@ -46,7 +56,7 @@ func (p *Provider) Chat(_ context.Context, history []aimodel.Message, _ []aimode
 		return &aimodel.Response{Text: fallbackHelp, Done: true}, nil
 	}
 
-	calls := Parse(userText)
+	calls := ParseWithContext(userText, p.sessionCtx)
 	if len(calls) == 0 {
 		return &aimodel.Response{Text: fallbackHelp, Done: true}, nil
 	}

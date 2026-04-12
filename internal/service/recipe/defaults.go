@@ -362,8 +362,8 @@ func Defaults() map[string]recipemodel.Recipe {
 			Description: "Open/focus the integrated terminal in VS Code",
 			Steps: []recipemodel.Step{
 				{Kind: recipemodel.StepOpenApp, AppName: "Visual Studio Code"},
-				{Kind: recipemodel.StepSleepMs, Ms: 300},
-				{Kind: recipemodel.StepPalette, Shortcut: "cmd+shift+p", Command: "Terminal: Focus Terminal"},
+				{Kind: recipemodel.StepSleepMs, Ms: 1000},
+				{Kind: recipemodel.StepPalette, Shortcut: "cmd+shift+p", Command: "View: Toggle Terminal"},
 			},
 		},
 		"vscode_new_terminal": {
