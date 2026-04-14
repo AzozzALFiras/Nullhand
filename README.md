@@ -6,6 +6,22 @@ Nullhand is a **personal-use**, self-hosted macOS remote control agent. It runs 
 
 **This project is designed for personal use only.** You control your own machine, with your own bot, from your own Telegram account.
 
+## 🚀 Looking for a Server Edition? Meet AXGhost
+
+While **Nullhand** is your ultimate command center for macOS, we've built a specialized, enterprise-grade tool specifically for servers.
+
+**[AXGhost](https://aevonx.app/marketplace/axghost)** is a **zero-cloud, zero-AI Go daemon** that transforms Telegram into a highly secure, natural-language administration console for your server infrastructure.
+
+✨ **Why AXGhost?**
+- 🌍 **Bilingual Brilliance:** Seamlessly execute commands using natural language in both **Arabic and English**.
+- 🛡️ **Ironclad Security:** Strict **whitelisted execution** ensures only explicitly approved, safe operations can run.
+- 🔐 **100% Private (Zero-Cloud / Zero-AI):** A completely self-contained daemon. No third-party APIs, no AI token limits, and absolutely no data leakage.
+- 📜 **Full Audit Trail:** Comprehensive logging provides total visibility over every system action you take.
+
+👉 **[Discover AXGhost on the AevonX Marketplace](https://aevonx.app/marketplace/axghost)**
+
+---
+
 ## What It Does
 
 Send a message to your Telegram bot:
