@@ -19,6 +19,7 @@ While **Nullhand** is your ultimate command center for macOS, we've built a spec
 - 📜 **Full Audit Trail:** Comprehensive logging provides total visibility over every system action you take.
 
 👉 **[Discover AXGhost on the AevonX Marketplace](https://aevonx.app/marketplace/axghost)**
+💻 **[View the Open Source Repository on GitHub](https://github.com/AevonXApp/AXGhost)**
 
 ---
 
