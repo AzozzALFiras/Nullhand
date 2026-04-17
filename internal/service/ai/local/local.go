@@ -3,7 +3,7 @@ package local
 import (
 	"context"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
+	aimodel "github.com/iamakillah/Nullhand_Linux/internal/model/ai"
 )
 
 // fallbackHelp is returned when the parser cannot understand the request.

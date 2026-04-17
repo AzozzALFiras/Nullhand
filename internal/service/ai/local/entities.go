@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents"
 )
 
 // Entities holds all detected components from user text.

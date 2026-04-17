@@ -1,8 +1,8 @@
 package cursor
 
 import (
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents"
+	aimodel "github.com/iamakillah/Nullhand_Linux/internal/model/ai"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents"
 )
 
 const appName = "Cursor"

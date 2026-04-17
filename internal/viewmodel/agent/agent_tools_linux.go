@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
-	a11ysvc "github.com/AzozzALFiras/nullhand/internal/service/linux/accessibility"
-	appsvc "github.com/AzozzALFiras/nullhand/internal/service/linux/apps"
-	filesvc "github.com/AzozzALFiras/nullhand/internal/service/linux/files"
-	kbsvc "github.com/AzozzALFiras/nullhand/internal/service/linux/keyboard"
-	mousesvc "github.com/AzozzALFiras/nullhand/internal/service/linux/mouse"
-	palettesvc "github.com/AzozzALFiras/nullhand/internal/service/linux/palette"
-	screensvc "github.com/AzozzALFiras/nullhand/internal/service/linux/screen"
-	shellsvc "github.com/AzozzALFiras/nullhand/internal/service/linux/shell"
+	aimodel "github.com/iamakillah/Nullhand_Linux/internal/model/ai"
+	a11ysvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/accessibility"
+	appsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/apps"
+	filesvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/files"
+	kbsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/keyboard"
+	mousesvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/mouse"
+	palettesvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/palette"
+	screensvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/screen"
+	shellsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/shell"
 )
 
 // executeTool calls the appropriate Linux service based on tool name.

@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	appsvc "github.com/AzozzALFiras/nullhand/internal/service/linux/apps"
+	appsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/apps"
 )
 
 // FocusField searches the FRONTMOST application's frontmost window for a

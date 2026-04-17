@@ -5,16 +5,16 @@ import (
 	"strconv"
 	"strings"
 
-	cmdmodel "github.com/AzozzALFiras/nullhand/internal/model/command"
-	a11ysvc "github.com/AzozzALFiras/nullhand/internal/service/macos/accessibility"
-	appsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/apps"
-	filesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/files"
-	kbsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/keyboard"
-	mousesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/mouse"
-	screensvc "github.com/AzozzALFiras/nullhand/internal/service/macos/screen"
-	shellsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/shell"
-	systemsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/system"
-	tgfmt "github.com/AzozzALFiras/nullhand/internal/view/telegram"
+	cmdmodel "github.com/iamakillah/Nullhand_Linux/internal/model/command"
+	a11ysvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/accessibility"
+	appsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/apps"
+	filesvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/files"
+	kbsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/keyboard"
+	mousesvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/mouse"
+	screensvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/screen"
+	shellsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/shell"
+	systemsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/system"
+	tgfmt "github.com/iamakillah/Nullhand_Linux/internal/view/telegram"
 )
 
 // Result carries the outcome of executing a manual command.

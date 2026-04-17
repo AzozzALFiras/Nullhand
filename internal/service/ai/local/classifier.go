@@ -3,11 +3,11 @@ package local
 import (
 	"strings"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents"
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/antigravity"
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/cursor"
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/vscode"
+	aimodel "github.com/iamakillah/Nullhand_Linux/internal/model/ai"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/antigravity"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/cursor"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/vscode"
 )
 
 // Intent types returned by the classifier.

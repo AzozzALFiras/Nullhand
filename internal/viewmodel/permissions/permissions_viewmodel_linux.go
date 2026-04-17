@@ -3,8 +3,8 @@
 package permissions
 
 import (
-	permsvc "github.com/AzozzALFiras/nullhand/internal/service/linux/permissions"
-	permview "github.com/AzozzALFiras/nullhand/internal/view/permissions"
+	permsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/permissions"
+	permview "github.com/iamakillah/Nullhand_Linux/internal/view/permissions"
 )
 
 // ViewModel orchestrates the Linux capability checks shown at startup.

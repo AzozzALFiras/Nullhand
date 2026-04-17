@@ -5,7 +5,7 @@ package permissions
 import (
 	"fmt"
 
-	permsvc "github.com/AzozzALFiras/nullhand/internal/service/linux/permissions"
+	permsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/permissions"
 )
 
 // Header prints the section header shown before capability checks.

@@ -3,8 +3,8 @@ package router
 import (
 	"strings"
 
-	cmdmodel "github.com/AzozzALFiras/nullhand/internal/model/command"
-	msgmodel "github.com/AzozzALFiras/nullhand/internal/model/message"
+	cmdmodel "github.com/iamakillah/Nullhand_Linux/internal/model/command"
+	msgmodel "github.com/iamakillah/Nullhand_Linux/internal/model/message"
 )
 
 // RouteType indicates how a message should be handled.

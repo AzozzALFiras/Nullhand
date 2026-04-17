@@ -9,12 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	configmodel "github.com/AzozzALFiras/nullhand/internal/model/config"
-	configrepo "github.com/AzozzALFiras/nullhand/internal/repository/config"
-	permissions "github.com/AzozzALFiras/nullhand/internal/service/linux/permissions"
-	botvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/bot"
-	permvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/permissions"
-	setupvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/setup"
+	configmodel "github.com/iamakillah/Nullhand_Linux/internal/model/config"
+	configrepo "github.com/iamakillah/Nullhand_Linux/internal/repository/config"
+	permissions "github.com/iamakillah/Nullhand_Linux/internal/service/linux/permissions"
+	botvm "github.com/iamakillah/Nullhand_Linux/internal/viewmodel/bot"
+	permvm "github.com/iamakillah/Nullhand_Linux/internal/viewmodel/permissions"
+	setupvm "github.com/iamakillah/Nullhand_Linux/internal/viewmodel/setup"
 )
 
 func main() {

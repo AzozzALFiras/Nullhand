@@ -1,7 +1,7 @@
 package bot
 
 import (
-	"github.com/AzozzALFiras/nullhand/internal/service/telegram"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/telegram"
 )
 
 // SendMenu sends the persistent shortcut toolbar with inline keyboard buttons.

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/AzozzALFiras/nullhand/internal/model/message"
+	"github.com/iamakillah/Nullhand_Linux/internal/model/message"
 )
 
 const apiBase = "https://api.telegram.org/bot"

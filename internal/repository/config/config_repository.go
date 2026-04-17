@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	configmodel "github.com/AzozzALFiras/nullhand/internal/model/config"
+	configmodel "github.com/iamakillah/Nullhand_Linux/internal/model/config"
 )
 
 const (

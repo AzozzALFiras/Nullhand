@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
-	screensvc "github.com/AzozzALFiras/nullhand/internal/service/linux/screen"
+	screensvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/screen"
 )
 
 // ErrNotInstalled is returned when tesseract is not found on the system.

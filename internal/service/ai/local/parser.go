@@ -4,20 +4,20 @@ import (
 	"regexp"
 	"strings"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents"
+	aimodel "github.com/iamakillah/Nullhand_Linux/internal/model/ai"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents"
 
 	// Import all intent packages to trigger their init() registration.
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/browser"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/common"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/discord"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/finder"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/messages"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/slack"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/system"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/terminal"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/vscode"
-	_ "github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents/whatsapp"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/browser"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/common"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/discord"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/finder"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/messages"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/slack"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/system"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/terminal"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/vscode"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/whatsapp"
 )
 
 // connectorRe splits text on "and"/"then"/"," and Arabic "ثم".

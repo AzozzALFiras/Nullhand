@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	recipemodel "github.com/AzozzALFiras/nullhand/internal/model/recipe"
+	recipemodel "github.com/iamakillah/Nullhand_Linux/internal/model/recipe"
 )
 
 const defaultFileRelative = ".nullhand/recipes.json"

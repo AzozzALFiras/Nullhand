@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
-	filesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/files"
+	filesvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/files"
 )
 
 // openInApp opens a path in the specified application.

@@ -1,6 +1,6 @@
 package recipe
 
-import recipemodel "github.com/AzozzALFiras/nullhand/internal/model/recipe"
+import recipemodel "github.com/iamakillah/Nullhand_Linux/internal/model/recipe"
 
 // Defaults returns the built-in recipes shipped with Nullhand. The user can
 // override any of these by adding an entry with the same name to

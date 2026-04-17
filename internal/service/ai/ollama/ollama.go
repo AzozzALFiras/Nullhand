@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/openai"
+	aimodel "github.com/iamakillah/Nullhand_Linux/internal/model/ai"
+	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/openai"
 )
 
 const (

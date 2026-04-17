@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/AzozzALFiras/nullhand/internal/model/message"
+	"github.com/iamakillah/Nullhand_Linux/internal/model/message"
 )
 
 const (

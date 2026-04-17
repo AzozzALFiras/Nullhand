@@ -7,9 +7,9 @@ import (
 	"log"
 	"strings"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
-	aisvc "github.com/AzozzALFiras/nullhand/internal/service/ai"
-	recipesvc "github.com/AzozzALFiras/nullhand/internal/service/recipe"
+	aimodel "github.com/iamakillah/Nullhand_Linux/internal/model/ai"
+	aisvc "github.com/iamakillah/Nullhand_Linux/internal/service/ai"
+	recipesvc "github.com/iamakillah/Nullhand_Linux/internal/service/recipe"
 )
 
 const maxSteps = 30
