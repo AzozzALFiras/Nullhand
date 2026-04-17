@@ -33,3 +33,6 @@ coverage.html
 config.json
 /.nullhand/
 /.claude
+
+# Kilo AI
+.kilo/

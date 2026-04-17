@@ -1,3 +1,5 @@
+//go:build linux
+
 package system
 
 import (
@@ -8,18 +10,18 @@ import (
 
 // Stats holds a snapshot of system resource usage.
 type Stats struct {
-	CPUUsed   string // e.g. "14.1%"
-	CPUIdle   string // e.g. "85.9%"
-	MemUsed   string // e.g. "23G"
-	MemUnused string // e.g. "1234M"
-	ActiveApp string // foreground application name
+	CPUUsed   string // e.g. "3.1% user + 1.2% sys"
+	CPUIdle   string // e.g. "95.4%"
+	MemUsed   string // e.g. "8192.0M"
+	MemUnused string // e.g. "1234.5M"
+	ActiveApp string // foreground window title
 }
 
-// GetStats returns CPU, memory, and active app info in a single snapshot.
+// GetStats returns CPU, memory, and active window info in a single snapshot.
 func GetStats() (*Stats, error) {
 	s := &Stats{}
 
-	// top -bn1 → one batch sample, no interactive mode (fast).
+	// top -bn1: one batch sample, no interactive mode.
 	out, err := exec.Command("top", "-bn1").Output()
 	if err != nil {
 		return nil, fmt.Errorf("top: %w", err)
@@ -32,11 +34,11 @@ func GetStats() (*Stats, error) {
 	return s, nil
 }
 
-// ActiveApp returns the name of the frontmost application window.
+// ActiveApp returns the title of the currently active window.
 func ActiveApp() (string, error) {
 	out, err := exec.Command("xdotool", "getactivewindow", "getwindowname").Output()
 	if err != nil {
-		return "", fmt.Errorf("active app: %w", err)
+		return "", fmt.Errorf("active app: %w (is xdotool installed? sudo apt install xdotool)", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -44,8 +46,9 @@ func ActiveApp() (string, error) {
 // parseTop extracts CPU and memory lines from Linux `top -bn1` output.
 // Expected formats:
 //
-//	%Cpu(s):  3.1 us,  1.2 sy,  0.0 ni, 95.4 id,  0.1 wa,  0.0 hi,  0.2 si
+//	%Cpu(s):  3.1 us,  1.2 sy,  0.0 ni, 95.4 id, ...
 //	MiB Mem :  16384.0 total,   1234.5 free,   8192.0 used,   6957.5 buff/cache
+//	KiB Mem :  16384.0 total, ...  (older kernels)
 func (s *Stats) parseTop(output string) {
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
@@ -61,7 +64,6 @@ func (s *Stats) parseTop(output string) {
 // parseCPU extracts user+sys and idle percentages from a Linux top CPU line.
 // e.g. "%Cpu(s):  3.1 us,  1.2 sy,  0.0 ni, 95.4 id, ..."
 func (s *Stats) parseCPU(line string) {
-	// Strip prefix up to ":"
 	idx := strings.Index(line, ":")
 	if idx < 0 {
 		return
@@ -91,14 +93,13 @@ func (s *Stats) parseCPU(line string) {
 	s.CPUIdle = idle
 }
 
-// parseMem extracts used and free memory totals from a Linux top memory line.
+// parseMem extracts used and free memory from a Linux top memory line.
 // e.g. "MiB Mem :  16384.0 total,   1234.5 free,   8192.0 used,   6957.5 buff/cache"
 func (s *Stats) parseMem(line string) {
 	idx := strings.Index(line, ":")
 	if idx < 0 {
 		return
 	}
-	// Determine unit prefix (MiB or KiB).
 	unit := "M"
 	if strings.HasPrefix(line, "KiB") {
 		unit = "K"

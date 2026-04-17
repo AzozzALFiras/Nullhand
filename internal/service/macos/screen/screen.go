@@ -10,7 +10,7 @@ import (
 
 // Capture takes a full-screen screenshot and returns the PNG bytes.
 func Capture() ([]byte, error) {
-	return captureWithArgs("-x") // -x = no sound
+	return captureWithArgs()
 }
 
 // CaptureForVision takes a full-screen screenshot and resizes it to match
@@ -38,7 +38,7 @@ func CaptureResized(maxWidth int) ([]byte, error) {
 		return data, nil // can't determine size, return full
 	}
 
-	// Write to temp, resize with sips, read back.
+	// Write to temp, resize with convert (ImageMagick), read back.
 	tmp, err := os.CreateTemp("", "nullhand-resize-*.png")
 	if err != nil {
 		return data, nil // fallback: return full-size
@@ -50,8 +50,9 @@ func CaptureResized(maxWidth int) ([]byte, error) {
 		return data, nil
 	}
 
-	sipsArgs := []string{"--resampleWidth", strconv.Itoa(targetWidth), tmp.Name()}
-	if out, err := exec.Command("sips", sipsArgs...).CombinedOutput(); err != nil {
+	// convert input.png -resize WIDTHx output.png  (only constrain width)
+	convertArgs := []string{tmp.Name(), "-resize", strconv.Itoa(targetWidth) + "x", tmp.Name()}
+	if out, err := exec.Command("convert", convertArgs...).CombinedOutput(); err != nil {
 		_ = out
 		return data, nil // fallback: return full-size
 	}
@@ -65,10 +66,14 @@ func CaptureResized(maxWidth int) ([]byte, error) {
 
 // CaptureActive takes a screenshot of the active (frontmost) window.
 func CaptureActive() ([]byte, error) {
-	return captureWithArgs("-x", "-l", frontWindowID())
+	wid := frontWindowID()
+	if wid == "" {
+		return captureWithArgs()
+	}
+	return captureWithArgs("--window", wid)
 }
 
-// captureWithArgs runs screencapture with the given flags and a temp file.
+// captureWithArgs runs scrot with the given flags and a temp file.
 func captureWithArgs(args ...string) ([]byte, error) {
 	tmp, err := os.CreateTemp("", "nullhand-*.png")
 	if err != nil {
@@ -77,10 +82,11 @@ func captureWithArgs(args ...string) ([]byte, error) {
 	tmp.Close()
 	defer os.Remove(tmp.Name())
 
+	// scrot [flags] filename
 	cmdArgs := append(args, tmp.Name())
-	out, err := exec.Command("screencapture", cmdArgs...).CombinedOutput()
+	out, err := exec.Command("scrot", cmdArgs...).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("screencapture: %w — %s", err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("scrot: %w — %s", err, strings.TrimSpace(string(out)))
 	}
 
 	data, err := os.ReadFile(tmp.Name())
@@ -92,42 +98,58 @@ func captureWithArgs(args ...string) ([]byte, error) {
 
 // Size returns the primary display resolution as (width, height).
 func Size() (int, int, error) {
-	script := `tell application "Finder" to get bounds of window of desktop`
-	out, err := exec.Command("osascript", "-e", script).Output()
+	out, err := exec.Command("xrandr").Output()
 	if err != nil {
-		// Fallback: use system_profiler
+		// Fallback: use xrandr with verbose flag
 		return sizeFromProfiler()
 	}
 
-	// Output: "0, 0, 1920, 1080"
-	parts := strings.Split(strings.TrimSpace(string(out)), ", ")
-	if len(parts) != 4 {
-		return sizeFromProfiler()
+	// Look for a line like: "   1920x1080     60.00*+"
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		// Primary connected line: "eDP-1 connected primary 1920x1080+0+0 ..."
+		if strings.Contains(line, " connected") && strings.Contains(line, "primary") {
+			parts := strings.Fields(line)
+			for _, p := range parts {
+				if strings.Contains(p, "x") && strings.Contains(p, "+") {
+					// e.g. "1920x1080+0+0"
+					res := strings.Split(p, "+")[0]
+					dims := strings.Split(res, "x")
+					if len(dims) == 2 {
+						w, err1 := strconv.Atoi(dims[0])
+						h, err2 := strconv.Atoi(dims[1])
+						if err1 == nil && err2 == nil && w > 0 && h > 0 {
+							return w, h, nil
+						}
+					}
+				}
+			}
+		}
 	}
-	w, err1 := strconv.Atoi(parts[2])
-	h, err2 := strconv.Atoi(parts[3])
-	if err1 != nil || err2 != nil {
-		return sizeFromProfiler()
-	}
-	return w, h, nil
+	return sizeFromProfiler()
 }
 
-// sizeFromProfiler is a fallback that reads display info via system_profiler.
+// sizeFromProfiler is a fallback that reads display info via xrandr.
 func sizeFromProfiler() (int, int, error) {
-	out, err := exec.Command("system_profiler", "SPDisplaysDataType").Output()
+	out, err := exec.Command("xrandr").Output()
 	if err != nil {
 		return 0, 0, fmt.Errorf("screen size: %w", err)
 	}
+	// Look for the current mode line after a "connected" line.
+	// Lines like: "   1920x1080     60.00*+"
 	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Resolution:") {
-			// e.g. "Resolution: 2560 x 1600"
-			parts := strings.Fields(line)
-			if len(parts) >= 4 {
-				w, _ := strconv.Atoi(parts[1])
-				h, _ := strconv.Atoi(parts[3])
-				if w > 0 && h > 0 {
-					return w, h, nil
+		trimmed := strings.TrimSpace(line)
+		// Current mode has an asterisk
+		if strings.Contains(trimmed, "*") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 1 {
+				dims := strings.Split(parts[0], "x")
+				if len(dims) == 2 {
+					w, err1 := strconv.Atoi(dims[0])
+					h, err2 := strconv.Atoi(dims[1])
+					if err1 == nil && err2 == nil && w > 0 && h > 0 {
+						return w, h, nil
+					}
 				}
 			}
 		}
@@ -136,10 +158,9 @@ func sizeFromProfiler() (int, int, error) {
 }
 
 // frontWindowID returns the window ID of the frontmost window as a string.
-// Returns empty string on failure (screencapture will then grab full screen).
+// Returns empty string on failure (scrot will then grab full screen).
 func frontWindowID() string {
-	script := `tell application "System Events" to get id of first window of (first process whose frontmost is true)`
-	out, err := exec.Command("osascript", "-e", script).Output()
+	out, err := exec.Command("xdotool", "getactivewindow").Output()
 	if err != nil {
 		return ""
 	}

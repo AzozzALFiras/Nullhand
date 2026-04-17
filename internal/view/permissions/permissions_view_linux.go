@@ -1,43 +1,43 @@
-//go:build darwin
+//go:build linux
 
 package permissions
 
 import (
 	"fmt"
 
-	permsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/permissions"
+	permsvc "github.com/AzozzALFiras/nullhand/internal/service/linux/permissions"
 )
 
-// Header prints the section header shown before permission checks.
+// Header prints the section header shown before capability checks.
 func Header() {
 	fmt.Println()
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("  🔐 Checking macOS permissions")
+	fmt.Println("  🔐 Checking Linux capabilities")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 }
 
-// Report prints the status of each permission.
+// Report prints the status of each capability.
 func Report(s permsvc.Status) {
 	fmt.Printf("  %s Screen Recording (for /screenshot)\n", mark(s.ScreenRecording))
 	fmt.Printf("  %s Accessibility    (for /click, /type, /key)\n", mark(s.Accessibility))
 	fmt.Println()
 }
 
-// Missing prints guidance when one or more permissions are not granted.
+// Missing prints guidance when one or more capabilities are not available.
 func Missing(s permsvc.Status) {
-	fmt.Println("⚠️  Some permissions are missing. Nullhand needs them to control your Mac.")
+	fmt.Println("⚠️  Some capabilities are missing. Nullhand needs them to control your desktop.")
 	fmt.Println()
 	fmt.Println("How to grant them:")
 	fmt.Println()
 
 	if !s.ScreenRecording {
-		fmt.Println("  1. Opening System Settings → Privacy → Screen Recording...")
-		fmt.Println("     → Enable the entry for this Terminal / nullhand")
+		fmt.Println("  1. Opening GNOME Privacy settings...")
+		fmt.Println("     → Ensure screen sharing / screenshot permissions are enabled")
 		fmt.Println()
 	}
 	if !s.Accessibility {
-		fmt.Println("  2. Opening System Settings → Privacy → Accessibility...")
-		fmt.Println("     → Enable the entry for this Terminal / nullhand")
+		fmt.Println("  2. Opening Universal Access settings...")
+		fmt.Println("     → Ensure assistive technologies / accessibility is enabled")
 		fmt.Println()
 	}
 
@@ -46,9 +46,9 @@ func Missing(s permsvc.Status) {
 	fmt.Println()
 }
 
-// Granted prints a success footer when all permissions are present.
+// Granted prints a success footer when all capabilities are present.
 func Granted() {
-	fmt.Println("✓ All permissions granted.")
+	fmt.Println("✓ All capabilities granted.")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 }

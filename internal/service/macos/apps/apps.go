@@ -11,42 +11,50 @@ import (
 // This is a single "make app ready to receive input" operation — anything
 // that types or clicks after this call will land in the correct app.
 func Open(appName string) error {
-	out, err := exec.Command("open", "-a", appName).CombinedOutput()
+	// gtk-launch uses .desktop file names; try the app name directly as a
+	// binary first, falling back to xdg-open for known file/URI handlers.
+	out, err := exec.Command("bash", "-c",
+		fmt.Sprintf("nohup %s >/dev/null 2>&1 & disown", shellQuote(appName))).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("open %q: %w — %s", appName, err, strings.TrimSpace(string(out)))
+		// Fallback: try gtk-launch (requires a matching .desktop entry).
+		out2, err2 := exec.Command("gtk-launch", appName).CombinedOutput()
+		if err2 != nil {
+			return fmt.Errorf("open %q: %w — %s %s",
+				appName, err, strings.TrimSpace(string(out)), strings.TrimSpace(string(out2)))
+		}
 	}
-	// `open -a` may return before the app is fully frontmost, especially if
-	// it was already running in the background. Explicitly activate it.
+	// Give the app time to start / come to the foreground.
 	time.Sleep(120 * time.Millisecond)
 	_ = Focus(appName)
-	// Give the WindowServer a beat to finish the app switch before callers
-	// start sending keystrokes.
+	// Give the window manager a beat to finish the app switch.
 	time.Sleep(180 * time.Millisecond)
 	return nil
 }
 
 // List returns the names of all currently running applications.
 func List() ([]string, error) {
-	script := `
-tell application "System Events"
-  set appList to name of every process whose background only is false
-  set output to ""
-  repeat with appName in appList
-    set output to output & appName & linefeed
-  end repeat
-  return output
-end tell`
-
-	out, err := exec.Command("osascript", "-e", script).Output()
+	// wmctrl -l lists all open windows; -p adds PIDs.
+	// We extract unique window titles as a proxy for running apps.
+	out, err := exec.Command("wmctrl", "-l").Output()
 	if err != nil {
 		return nil, fmt.Errorf("list apps: %w", err)
 	}
 
+	seen := map[string]struct{}{}
 	var apps []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			apps = append(apps, line)
+		// wmctrl -l format: <wid> <desktop> <host> <title…>
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		title := strings.Join(fields[3:], " ")
+		if title == "" {
+			continue
+		}
+		if _, dup := seen[title]; !dup {
+			seen[title] = struct{}{}
+			apps = append(apps, title)
 		}
 	}
 	return apps, nil
@@ -54,10 +62,14 @@ end tell`
 
 // Focus brings the given application to the foreground.
 func Focus(appName string) error {
-	script := fmt.Sprintf(`tell application "%s" to activate`, appName)
-	out, err := exec.Command("osascript", "-e", script).CombinedOutput()
+	out, err := exec.Command("wmctrl", "-a", appName).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("focus %q: %w — %s", appName, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// shellQuote wraps s in single quotes, escaping any existing single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

@@ -1,3 +1,5 @@
+//go:build linux
+
 package keyboard
 
 import (
@@ -9,11 +11,10 @@ import (
 
 // Type inserts text into the frontmost application via clipboard paste.
 // It saves the existing clipboard first and restores it before returning.
-// Use this for one-shot typing where no verification is needed.
 //
-// We deliberately avoid xdotool's `type` for text entry because it can
-// mishandle non-Latin input sources. Clipboard + Ctrl+V inserts the exact
-// Unicode text regardless of the active keyboard layout.
+// We use clipboard + Ctrl+V rather than xdotool type because xdotool type
+// can mishandle non-Latin input sources (Arabic, Chinese, emoji). The
+// clipboard approach inserts exact Unicode regardless of active layout.
 func Type(text string) error {
 	prev, _, err := TypeAndHold(text)
 	if err != nil {
@@ -24,10 +25,6 @@ func Type(text string) error {
 }
 
 // TypeAndHold pastes text without restoring the clipboard afterwards.
-// It returns the previous clipboard contents so the caller can restore them
-// later (after verification, for example). This is the building block the
-// agent verification loop uses: paste → verify_clipboard → restore_clipboard.
-//
 // Returns: (previousClipboard, hadPrevious, error).
 func TypeAndHold(text string) (string, bool, error) {
 	if text == "" {
@@ -40,7 +37,6 @@ func TypeAndHold(text string) (string, bool, error) {
 	}
 	time.Sleep(60 * time.Millisecond)
 
-	// Use xdotool to send Ctrl+V (paste) — layout-independent.
 	if err := xdotoolKey("ctrl+v"); err != nil {
 		return prev, hadPrev, fmt.Errorf("keyboard: paste: %w", err)
 	}
@@ -48,9 +44,7 @@ func TypeAndHold(text string) (string, bool, error) {
 	return prev, hadPrev, nil
 }
 
-// RestoreClipboard writes the given text back to the clipboard. If text is
-// empty this is a no-op. Best-effort: errors are swallowed because they
-// should not fail the overall operation.
+// RestoreClipboard writes text back to the clipboard. No-op if text is empty.
 func RestoreClipboard(prev string) {
 	if prev == "" {
 		return
@@ -58,8 +52,7 @@ func RestoreClipboard(prev string) {
 	_ = writeClipboard(prev)
 }
 
-// ReadClipboard returns the current clipboard text (trimmed trailing newline).
-// Used by the agent verification loop.
+// ReadClipboard returns the current clipboard text (trailing newline trimmed).
 func ReadClipboard() string {
 	s, _ := readClipboard()
 	return strings.TrimRight(s, "\n")
@@ -76,36 +69,37 @@ func readClipboard() (string, bool) {
 func writeClipboard(text string) error {
 	cmd := exec.Command("xclip", "-selection", "clipboard")
 	cmd.Stdin = strings.NewReader(text)
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("xclip: %w (is xclip installed? sudo apt install xclip)", err)
+	}
+	return nil
 }
 
 // PressKey presses a key or modifier+key shortcut.
-// Examples: "enter", "cmd+t", "cmd+shift+5", "escape", "tab", "f5"
+// Examples: "enter", "ctrl+t", "ctrl+shift+5", "escape", "tab", "f5".
+// Modifier mapping: cmd/command → ctrl, option → alt.
 func PressKey(shortcut string) error {
 	parts := strings.Split(strings.ToLower(shortcut), "+")
 	key := parts[len(parts)-1]
 	modifiers := parts[:len(parts)-1]
 
-	// Map readable key names to xdotool key names.
 	xkey, known := keyNameMap[key]
 	if !known {
-		xkey = key // pass through as-is (letters, numbers, punctuation)
+		xkey = key // pass through letters, numbers, bare punctuation
 	}
 
 	modStr := buildModifiers(modifiers)
-
 	var combo string
 	if modStr != "" {
 		combo = modStr + "+" + xkey
 	} else {
 		combo = xkey
 	}
-
 	return xdotoolKey(combo)
 }
 
-// buildModifiers converts ["cmd","shift"] → "ctrl+shift", mapping macOS
-// modifier names to their xdotool equivalents.
+// buildModifiers converts ["ctrl","shift"] → "ctrl+shift", mapping macOS
+// modifier names to xdotool equivalents.
 func buildModifiers(mods []string) string {
 	var out []string
 	for _, m := range mods {
@@ -118,24 +112,30 @@ func buildModifiers(mods []string) string {
 			out = append(out, "ctrl")
 		case "alt", "option":
 			out = append(out, "alt")
+		case "super", "win":
+			out = append(out, "super")
 		}
 	}
 	return strings.Join(out, "+")
 }
 
-// keyNameMap maps readable key names to xdotool / X11 key names.
+// keyNameMap maps readable key names to X11/xdotool key names.
 // Letters, numbers, and simple punctuation are passed through unchanged.
 var keyNameMap = map[string]string{
-	// Special keys
+	// Navigation & control
 	"enter": "Return", "return": "Return",
-	"escape": "Escape", "tab": "Tab", "space": "space",
+	"escape": "Escape", "esc": "Escape",
+	"tab": "Tab", "space": "space",
 	"delete": "BackSpace", "backspace": "BackSpace",
+	"del": "Delete", "forward_delete": "Delete",
 	"up": "Up", "down": "Down", "left": "Left", "right": "Right",
+	"home": "Home", "end": "End",
+	"pageup": "Prior", "pagedown": "Next",
 	// Function keys
 	"f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4",
 	"f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
 	"f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
-	// Punctuation that xdotool names differ from the raw character
+	// Punctuation that xdotool names explicitly
 	"-": "minus", "=": "equal",
 	"[": "bracketleft", "]": "bracketright",
 	";": "semicolon", "'": "apostrophe",
@@ -147,7 +147,7 @@ var keyNameMap = map[string]string{
 func xdotoolKey(combo string) error {
 	out, err := exec.Command("xdotool", "key", combo).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("xdotool key error: %w — %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("xdotool key error: %w — %s (is xdotool installed? sudo apt install xdotool)", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }

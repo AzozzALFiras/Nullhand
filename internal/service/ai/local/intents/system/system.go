@@ -14,7 +14,7 @@ func init() {
 			Re: regexp.MustCompile(`(?i)^(?:status|حالة|الحالة|معلومات|info)\.?$`),
 			Build: func(m []string) []aimodel.ToolCall {
 				return []aimodel.ToolCall{intents.ToolCall("run_shell", map[string]string{
-					"command": "echo CPU: $(top -l 1 | grep 'CPU usage' | head -1) && echo MEM: $(top -l 1 | grep 'PhysMem' | head -1)",
+					"command": "echo CPU: $(top -bn1 | grep '%Cpu' | head -1) && echo MEM: $(top -bn1 | grep 'MiB Mem' | head -1)",
 				})}
 			},
 		},
@@ -24,7 +24,7 @@ func init() {
 			Re: regexp.MustCompile(`(?i)^(?:apps|running\s+apps|التطبيقات|البرامج|اعرض\s+التطبيقات)\.?$`),
 			Build: func(m []string) []aimodel.ToolCall {
 				return []aimodel.ToolCall{intents.ToolCall("run_shell", map[string]string{
-					"command": "osascript -e 'tell application \"System Events\" to get name of every process whose background only is false'",
+					"command": "wmctrl -l | awk '{print $4}'",
 				})}
 			},
 		},
@@ -33,11 +33,13 @@ func init() {
 		intents.Intent{
 			Re: regexp.MustCompile(`(?i)^(?:lock|lock\s+screen|اقفل\s+الشاشة|قفل)\.?$`),
 			Build: func(m []string) []aimodel.ToolCall {
-				return []aimodel.ToolCall{intents.ToolCall("press_key", map[string]string{"key": "ctrl+cmd+q"})}
+				return []aimodel.ToolCall{intents.ToolCall("run_shell", map[string]string{
+					"command": "xdg-screensaver lock",
+				})}
 			},
 		},
 
-		// ── Spotlight search ─────────────────────────────────────────
+		// ── Spotlight search (replaced with rofi / app launcher) ─────
 		intents.Intent{
 			Re: regexp.MustCompile(`(?i)^(?:spotlight|سبوت\s*لايت)\s+(.+?)\.?$`),
 			Build: func(m []string) []aimodel.ToolCall {

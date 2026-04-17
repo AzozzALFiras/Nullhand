@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Status describes whether each macOS privacy permission is granted.
+// Status describes whether each required Linux capability is available.
 type Status struct {
 	ScreenRecording bool
 	Accessibility   bool
@@ -18,8 +18,7 @@ func (s Status) AllGranted() bool {
 	return s.ScreenRecording && s.Accessibility
 }
 
-// Check probes both required macOS permissions and returns their status.
-// Calling this also triggers the macOS TCC prompts on first run.
+// Check probes both required Linux capabilities and returns their status.
 func Check() Status {
 	return Status{
 		ScreenRecording: checkScreenRecording(),
@@ -27,8 +26,8 @@ func Check() Status {
 	}
 }
 
-// checkScreenRecording attempts a small screenshot and inspects stderr.
-// Without the permission, screencapture writes a warning to stderr.
+// checkScreenRecording attempts a small screenshot with scrot.
+// Without a running X display or sufficient permissions, scrot will fail.
 func checkScreenRecording() bool {
 	f, err := os.CreateTemp("", "nullhand-perm-*.png")
 	if err != nil {
@@ -39,15 +38,15 @@ func checkScreenRecording() bool {
 	defer os.Remove(path)
 
 	var stderr bytes.Buffer
-	cmd := exec.Command("screencapture", "-x", "-t", "png", path)
+	cmd := exec.Command("scrot", path)
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		return false
 	}
 
-	// Any mention of permission in stderr means denied.
+	// Any error message in stderr indicates a problem.
 	se := strings.ToLower(stderr.String())
-	if strings.Contains(se, "not authorized") || strings.Contains(se, "permission") {
+	if strings.Contains(se, "error") || strings.Contains(se, "permission") {
 		return false
 	}
 
@@ -58,37 +57,35 @@ func checkScreenRecording() bool {
 	return true
 }
 
-// checkAccessibility tries to query System Events. Without accessibility
-// permission, osascript fails with an "not authorized" error.
+// checkAccessibility verifies that xdotool can query the active window,
+// which requires a working X11 display and XTEST extension access.
 func checkAccessibility() bool {
 	var stderr bytes.Buffer
-	cmd := exec.Command("osascript", "-e",
-		`tell application "System Events" to get name of first process whose frontmost is true`)
+	cmd := exec.Command("xdotool", "getactivewindow")
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		return false
 	}
 	se := strings.ToLower(stderr.String())
-	if strings.Contains(se, "not authorized") || strings.Contains(se, "(-1743)") {
+	if strings.Contains(se, "error") || strings.Contains(se, "unable") {
 		return false
 	}
 	return true
 }
 
-// OpenScreenRecordingPane opens System Settings > Privacy > Screen Recording.
+// OpenScreenRecordingPane opens the system settings panel relevant to display
+// / privacy on Linux. Falls back to the GNOME privacy panel.
 func OpenScreenRecordingPane() error {
-	return exec.Command("open",
-		"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture").Run()
+	return exec.Command("xdg-open", "settings://privacy").Run()
 }
 
-// OpenAccessibilityPane opens System Settings > Privacy > Accessibility.
+// OpenAccessibilityPane opens the accessibility settings panel.
 func OpenAccessibilityPane() error {
-	return exec.Command("open",
-		"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility").Run()
+	return exec.Command("xdg-open", "settings://universal-access").Run()
 }
 
-// OpenAutomationPane opens System Settings > Privacy > Automation.
+// OpenAutomationPane opens the general system settings panel (Linux has no
+// direct Automation privacy pane equivalent).
 func OpenAutomationPane() error {
-	return exec.Command("open",
-		"x-apple.systempreferences:com.apple.preference.security?Privacy_Automation").Run()
+	return exec.Command("xdg-open", "settings://").Run()
 }

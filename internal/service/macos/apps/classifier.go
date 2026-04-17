@@ -2,45 +2,51 @@ package apps
 
 import "strings"
 
-// nativeAXApps is the allowlist of macOS applications whose UI is exposed
-// to the Accessibility tree via AppleScript `System Events`. For these apps,
+// nativeAXApps is the allowlist of Linux applications whose UI is exposed
+// to the Accessibility tree via AT-SPI2. For these apps,
 // accessibility.FocusField / Click work correctly.
 //
 // Apps NOT in this list are assumed to be Electron-based or otherwise
-// opaque to AX, and the agent should reach them via focus_via_palette or
+// opaque to AT-SPI, and the agent should reach them via focus_via_palette or
 // run_recipe instead.
 //
 // Keys are lowercased process/display names. We check both the user-supplied
 // name and common variants.
 var nativeAXApps = map[string]struct{}{
-	"safari":          {},
-	"mail":            {},
-	"messages":        {},
-	"finder":          {},
-	"terminal":        {},
-	"iterm":           {},
-	"iterm2":          {},
-	"textedit":        {},
-	"notes":           {},
-	"xcode":           {},
-	"system settings": {},
-	"system preferences": {},
-	"preview":         {},
-	"calculator":      {},
-	"reminders":       {},
-	"calendar":        {},
-	"contacts":        {},
-	"music":           {},
-	"podcasts":        {},
-	"photos":          {},
-	"maps":            {},
-	"weather":         {},
-	"dictionary":      {},
-	"automator":       {},
-	"script editor":   {},
-	"activity monitor": {},
-	"disk utility":    {},
-	"keychain access": {},
+	"firefox":          {},
+	"thunderbird":      {},
+	"gedit":            {},
+	"gnome-terminal":   {},
+	"terminal":         {},
+	"nautilus":         {},
+	"files":            {},
+	"gnome-text-editor": {},
+	"kate":             {},
+	"konsole":          {},
+	"dolphin":          {},
+	"libreoffice":      {},
+	"libreoffice writer": {},
+	"libreoffice calc": {},
+	"libreoffice impress": {},
+	"evince":           {},
+	"eog":              {},
+	"cheese":           {},
+	"gnome-calculator": {},
+	"calculator":       {},
+	"gnome-calendar":   {},
+	"calendar":         {},
+	"gnome-contacts":   {},
+	"contacts":         {},
+	"rhythmbox":        {},
+	"totem":            {},
+	"shotwell":         {},
+	"gnome-maps":       {},
+	"gnome-weather":    {},
+	"gnome-disk-utility": {},
+	"baobab":           {},
+	"gnome-system-monitor": {},
+	"system monitor":   {},
+	"seahorse":         {},
 }
 
 // IsNativeAX reports whether the given app name is in the native AX allowlist.

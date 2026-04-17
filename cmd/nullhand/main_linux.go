@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build linux
 
 package main
 
@@ -11,6 +11,7 @@ import (
 
 	configmodel "github.com/AzozzALFiras/nullhand/internal/model/config"
 	configrepo "github.com/AzozzALFiras/nullhand/internal/repository/config"
+	permissions "github.com/AzozzALFiras/nullhand/internal/service/linux/permissions"
 	botvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/bot"
 	permvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/permissions"
 	setupvm "github.com/AzozzALFiras/nullhand/internal/viewmodel/setup"
@@ -19,14 +20,23 @@ import (
 func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 
+	// Check X11 session first
+	if err := permissions.CheckX11Session(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
 	cfg, err := loadOrSetup()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "setup failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Check macOS privacy permissions before starting the bot.
-	permvm.New().Ensure()
+	// Check Linux capabilities before starting the bot.
+	if !permvm.New().Ensure() {
+		fmt.Println("Please grant the missing capabilities and restart.")
+		os.Exit(1)
+	}
 
 	bot, err := botvm.New(cfg)
 	if err != nil {

@@ -1,3 +1,5 @@
+//go:build linux
+
 package palette
 
 import (
@@ -7,22 +9,17 @@ import (
 	"time"
 )
 
-// Run opens the command palette of the frontmost application by pressing
-// the given keyboard shortcut, pastes the command name via the clipboard
+// Run opens the command palette of the frontmost application by pressing the
+// given keyboard shortcut, pastes the command name via the clipboard
 // (Unicode-safe), and presses Return to execute it.
 //
 // Examples:
 //
 //	Run("ctrl+shift+p", "Claude Code: Focus Chat")   // VS Code / Cursor
-//	Run("ctrl+k", "jump to channel #general")        // Slack / Discord / Linear
-//	Run("ctrl+/", "find plugin")                     // Figma
+//	Run("ctrl+k", "jump to channel #general")        // Slack / Discord
 //	Run("ctrl+p", "quick find")                      // Notion / Obsidian
 //
-// This is the vision-free way to reach any named command inside an Electron
-// app. The palette input is auto-focused by the host app, and the host's
-// fuzzy matcher finds the command — we never query the AX tree.
-//
-// Requires xdotool and xclip.
+// Requires xdotool and xclip: sudo apt install xdotool xclip
 func Run(shortcut, command string) error {
 	if shortcut == "" {
 		return fmt.Errorf("palette: shortcut is required")
@@ -31,15 +28,13 @@ func Run(shortcut, command string) error {
 		return fmt.Errorf("palette: command is required")
 	}
 
-	// Give the frontmost app a beat to be ready to receive the shortcut.
 	time.Sleep(150 * time.Millisecond)
 
 	if err := pressShortcut(shortcut); err != nil {
 		return fmt.Errorf("palette: open: %w", err)
 	}
 
-	// Palette render time. Electron apps need a few hundred ms before the
-	// palette input is ready to accept keystrokes.
+	// Give Electron apps time to render the palette input.
 	time.Sleep(250 * time.Millisecond)
 
 	prev, hadPrev := readClipboard()
@@ -49,18 +44,16 @@ func Run(shortcut, command string) error {
 	}
 	time.Sleep(60 * time.Millisecond)
 
-	// Use xdotool to send Ctrl+V — layout-independent paste.
+	// Ctrl+V paste — layout-independent, works regardless of keyboard locale.
 	if err := xdotoolKey("ctrl+v"); err != nil {
 		return fmt.Errorf("palette: paste command: %w", err)
 	}
 	time.Sleep(150 * time.Millisecond)
 
-	// Fire Return to execute the palette command.
 	if err := xdotoolKey("Return"); err != nil {
 		return fmt.Errorf("palette: press return: %w", err)
 	}
 
-	// Let the command actually run before we touch anything else.
 	time.Sleep(250 * time.Millisecond)
 
 	if hadPrev {
@@ -69,8 +62,7 @@ func Run(shortcut, command string) error {
 	return nil
 }
 
-// pressShortcut parses a "ctrl+shift+p" style string and dispatches it via
-// xdotool key with the right modifiers.
+// pressShortcut parses a "ctrl+shift+p" style string and sends it via xdotool.
 func pressShortcut(shortcut string) error {
 	parts := strings.Split(strings.ToLower(shortcut), "+")
 	if len(parts) == 0 {
@@ -79,13 +71,13 @@ func pressShortcut(shortcut string) error {
 	key := strings.TrimSpace(parts[len(parts)-1])
 	modifiers := parts[:len(parts)-1]
 
-	// Map readable key name to xdotool key name.
 	xkey, ok := specialKeyNames[key]
 	if !ok {
-		if xkey2, ok2 := letterKeyNames[key]; ok2 {
-			xkey = xkey2
+		if mapped, ok2 := letterKeyNames[key]; ok2 {
+			xkey = mapped
 		} else {
-			xkey = key // pass through (letters, numbers)
+			// Unknown key — pass through; xdotool will reject it clearly.
+			return fmt.Errorf("unsupported palette key %q", key)
 		}
 	}
 
@@ -99,8 +91,8 @@ func pressShortcut(shortcut string) error {
 	return xdotoolKey(combo)
 }
 
-// buildModifiers converts ["ctrl","shift"] → "ctrl+shift", mapping macOS
-// modifier names to their xdotool equivalents.
+// buildModifiers converts modifier slice to xdotool format (e.g. "ctrl+shift").
+// cmd/command → ctrl, option → alt (macOS shortcut strings are accepted).
 func buildModifiers(mods []string) string {
 	var out []string
 	for _, m := range mods {
@@ -113,6 +105,8 @@ func buildModifiers(mods []string) string {
 			out = append(out, "ctrl")
 		case "alt", "option", "opt":
 			out = append(out, "alt")
+		case "super", "win":
+			out = append(out, "super")
 		}
 	}
 	if len(out) == 0 {
@@ -121,7 +115,7 @@ func buildModifiers(mods []string) string {
 	return strings.Join(out, "+")
 }
 
-// specialKeyNames maps readable key names to xdotool / X11 key names.
+// specialKeyNames maps human-readable names to X11/xdotool key symbols.
 var specialKeyNames = map[string]string{
 	"return": "Return", "enter": "Return",
 	"tab": "Tab", "space": "space", "escape": "Escape", "esc": "Escape",
@@ -134,8 +128,7 @@ var specialKeyNames = map[string]string{
 	",": "comma", ".": "period", "`": "grave",
 }
 
-// letterKeyNames maps letters and digits to themselves (xdotool accepts them
-// directly). Kept as a map for symmetry with the macOS key-code map.
+// letterKeyNames maps letters and digits to themselves (xdotool accepts them).
 var letterKeyNames = map[string]string{
 	"a": "a", "b": "b", "c": "c", "d": "d", "e": "e", "f": "f",
 	"g": "g", "h": "h", "i": "i", "j": "j", "k": "k", "l": "l",
@@ -146,11 +139,10 @@ var letterKeyNames = map[string]string{
 	"5": "5", "6": "6", "7": "7", "8": "8", "9": "9",
 }
 
-// xdotoolKey sends a key combo via xdotool key (e.g. "ctrl+shift+p", "Return").
 func xdotoolKey(combo string) error {
 	out, err := exec.Command("xdotool", "key", combo).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("xdotool: %w — %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("xdotool: %w — %s (is xdotool installed? sudo apt install xdotool)", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
