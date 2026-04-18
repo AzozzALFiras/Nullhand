@@ -260,9 +260,16 @@ func (vm *ViewModel) buildToolDefinitions() []aimodel.ToolDefinition {
 		},
 		{
 			Name:        "open_app",
-			Description: "Launch and focus a macOS application by name.",
+			Description: "Launch and focus an application by name.",
 			Parameters: []aimodel.ToolParameter{
-				{Name: "app_name", Type: "string", Description: "Application display name, e.g. Safari, Visual Studio Code", Required: true},
+				{Name: "app_name", Type: "string", Description: "Application display name, e.g. Firefox, Visual Studio Code", Required: true},
+			},
+		},
+		{
+			Name:        "close_app",
+			Description: "Close or kill an application by name. Sends a graceful close first, then force-kills if needed.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "app_name", Type: "string", Description: "Application display name, e.g. Firefox, Visual Studio Code", Required: true},
 			},
 		},
 		{

@@ -132,6 +132,25 @@ func Focus(appName string) error {
 	return nil
 }
 
+// CloseApp closes an application by name.
+// First tries wmctrl -c (graceful _NET_CLOSE_WINDOW), then falls back to
+// pkill -f (SIGTERM to any process whose argv contains name).
+func CloseApp(name string) error {
+	// 1. Graceful close via wmctrl window title match.
+	out, err := exec.Command("wmctrl", "-c", name).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	_ = out // first attempt may fail silently; fall through
+
+	// 2. Force close via pkill.
+	out, err = exec.Command("pkill", "-f", name).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("close %q: wmctrl and pkill both failed — %s (is wmctrl installed? sudo apt install wmctrl)", name, strings.TrimSpace(string(out)))
+}
+
 // gtkLaunch launches an application via gtk-launch with the given desktop ID.
 func gtkLaunch(desktopID string) error {
 	cmd := exec.Command("gtk-launch", desktopID)

@@ -59,6 +59,13 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 		}
 		return textParts(fmt.Sprintf("opened %s", app)), nil
 
+	case "close_app":
+		app := args["app_name"]
+		if err := appsvc.CloseApp(app); err != nil {
+			return textParts(fmt.Sprintf("error: %v", err)), err
+		}
+		return textParts(fmt.Sprintf("closed %s", app)), nil
+
 	case "click":
 		x, y, err := parseXY(args)
 		if err != nil {

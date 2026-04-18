@@ -9,6 +9,7 @@ import (
 
 	// Import all intent packages to trigger their init() registration.
 	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/browser"
+	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/closeapp"
 	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/common"
 	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/discord"
 	_ "github.com/iamakillah/Nullhand_Linux/internal/service/ai/local/intents/finder"
