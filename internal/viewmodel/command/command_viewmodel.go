@@ -173,7 +173,7 @@ func (vm *ViewModel) drag(args []string) Result {
 
 func (vm *ViewModel) scroll(args []string) Result {
 	if len(args) < 1 {
-		return Result{Text: "Usage: /scroll <up|down|left|right> [steps]"}
+		return Result{Text: "Usage: /scroll `up|down|left|right` [steps]"}
 	}
 	dir := args[0]
 	steps := 3
@@ -190,7 +190,7 @@ func (vm *ViewModel) scroll(args []string) Result {
 
 func (vm *ViewModel) typeText(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /type <text>"}
+		return Result{Text: "Usage: /type `text`"}
 	}
 	text := strings.Join(args, " ")
 	if err := kbsvc.Type(text); err != nil {
@@ -201,7 +201,7 @@ func (vm *ViewModel) typeText(args []string) Result {
 
 func (vm *ViewModel) pressKey(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /key <shortcut>  e.g. /key cmd+t"}
+		return Result{Text: "Usage: /key `shortcut`  e.g. /key cmd+t"}
 	}
 	if err := kbsvc.PressKey(args[0]); err != nil {
 		return Result{Text: tgfmt.Fail(err)}
@@ -211,7 +211,7 @@ func (vm *ViewModel) pressKey(args []string) Result {
 
 func (vm *ViewModel) openApp(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /open <AppName>"}
+		return Result{Text: "Usage: /open `AppName`"}
 	}
 	appName := strings.Join(args, " ")
 	if err := appsvc.Open(appName); err != nil {
@@ -222,7 +222,7 @@ func (vm *ViewModel) openApp(args []string) Result {
 
 func (vm *ViewModel) shell(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /shell <command>"}
+		return Result{Text: "Usage: /shell `command`"}
 	}
 	cmdLine := strings.Join(args, " ")
 	out, err := shellsvc.Run(cmdLine)
@@ -240,7 +240,7 @@ func (vm *ViewModel) shell(args []string) Result {
 
 func (vm *ViewModel) readFile(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /read <path>"}
+		return Result{Text: "Usage: /read `path`"}
 	}
 	content, err := filesvc.Read(args[0])
 	if err != nil {
@@ -274,7 +274,7 @@ func (vm *ViewModel) getClipboard() Result {
 
 func (vm *ViewModel) setClipboard(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /copy <text>"}
+		return Result{Text: "Usage: /copy `text`"}
 	}
 	if err := filesvc.SetClipboard(strings.Join(args, " ")); err != nil {
 		return Result{Text: tgfmt.Fail(err)}
