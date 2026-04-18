@@ -338,9 +338,9 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		if workingMsgID > 0 {
 			if result.ImageData != nil {
 				_ = vm.tg.DeleteMessage(msg.Chat.ID, workingMsgID)
-				log.Printf("DEBUG sendPhoto: chatID=%d dataLen=%d", msg.Chat.ID, len(result.ImageData))
-				err := vm.tg.SendPhoto(msg.Chat.ID, result.ImageData, result.Text)
-				log.Printf("DEBUG sendPhoto result: err=%v", err)
+				if err := vm.tg.SendPhoto(msg.Chat.ID, result.ImageData, result.Text); err != nil {
+					log.Printf("sendPhoto error: %v", err)
+				}
 			} else {
 				_ = vm.tg.EditMessage(msg.Chat.ID, workingMsgID, result.Text, nil)
 			}

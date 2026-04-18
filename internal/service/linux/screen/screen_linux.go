@@ -77,11 +77,13 @@ func captureWithArgs(args ...string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("screen: create temp file: %w", err)
 	}
+	tmpName := tmp.Name()
 	tmp.Close()
-	defer os.Remove(tmp.Name())
+	os.Remove(tmpName) // delete so scrot can create it fresh
+	defer os.Remove(tmpName)
 
 	// scrot [flags] filename
-	cmdArgs := append(args, tmp.Name())
+	cmdArgs := append(args, tmpName)
 	cmd := exec.Command("scrot", cmdArgs...)
 	cmd.Env = append(os.Environ(), "DISPLAY=:0")
 	out, err := cmd.CombinedOutput()
@@ -89,7 +91,7 @@ func captureWithArgs(args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("scrot: %w — %s (is scrot installed? sudo apt install scrot)", err, strings.TrimSpace(string(out)))
 	}
 
-	data, err := os.ReadFile(tmp.Name())
+	data, err := os.ReadFile(tmpName)
 	if err != nil {
 		return nil, fmt.Errorf("screen: read captured file: %w", err)
 	}
