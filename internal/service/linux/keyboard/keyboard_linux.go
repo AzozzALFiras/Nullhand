@@ -4,6 +4,7 @@ package keyboard
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -59,7 +60,9 @@ func ReadClipboard() string {
 }
 
 func readClipboard() (string, bool) {
-	out, err := exec.Command("xclip", "-selection", "clipboard", "-o").Output()
+	cmd := exec.Command("xclip", "-selection", "clipboard", "-o")
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	out, err := cmd.Output()
 	if err != nil {
 		return "", false
 	}
@@ -68,6 +71,7 @@ func readClipboard() (string, bool) {
 
 func writeClipboard(text string) error {
 	cmd := exec.Command("xclip", "-selection", "clipboard")
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
 	cmd.Stdin = strings.NewReader(text)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("xclip: %w (is xclip installed? sudo apt install xclip)", err)
@@ -145,7 +149,9 @@ var keyNameMap = map[string]string{
 
 // xdotoolKey sends a key combo via xdotool key (e.g. "ctrl+v", "Return").
 func xdotoolKey(combo string) error {
-	out, err := exec.Command("xdotool", "key", combo).CombinedOutput()
+	cmd := exec.Command("xdotool", "key", combo)
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("xdotool key error: %w — %s (is xdotool installed? sudo apt install xdotool)", err, strings.TrimSpace(string(out)))
 	}

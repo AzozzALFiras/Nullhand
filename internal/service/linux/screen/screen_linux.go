@@ -82,7 +82,9 @@ func captureWithArgs(args ...string) ([]byte, error) {
 
 	// scrot [flags] filename
 	cmdArgs := append(args, tmp.Name())
-	out, err := exec.Command("scrot", cmdArgs...).CombinedOutput()
+	cmd := exec.Command("scrot", cmdArgs...)
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("scrot: %w — %s (is scrot installed? sudo apt install scrot)", err, strings.TrimSpace(string(out)))
 	}
@@ -97,7 +99,9 @@ func captureWithArgs(args ...string) ([]byte, error) {
 // Size returns the primary display resolution as (width, height).
 // Parses xrandr output looking for the connected primary display line.
 func Size() (int, int, error) {
-	out, err := exec.Command("xrandr").Output()
+	xrandrCmd := exec.Command("xrandr")
+	xrandrCmd.Env = append(os.Environ(), "DISPLAY=:0")
+	out, err := xrandrCmd.Output()
 	if err != nil {
 		return 0, 0, fmt.Errorf("xrandr: %w (is xrandr installed? sudo apt install x11-xserver-utils)", err)
 	}
@@ -167,7 +171,9 @@ func parseResolutionGeometry(line string) (int, int, bool) {
 // frontWindowID returns the X window ID of the active window as a string.
 // Returns empty string on failure (Capture falls back to full screen).
 func frontWindowID() string {
-	out, err := exec.Command("xdotool", "getactivewindow").Output()
+	cmd := exec.Command("xdotool", "getactivewindow")
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}

@@ -4,6 +4,7 @@ package mouse
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -74,7 +75,9 @@ func Scroll(direction string, steps int) error {
 // xdotool executes xdotool with the given arguments.
 // All mouse operations use this helper so the error message is uniform.
 func xdotool(args ...string) error {
-	out, err := exec.Command("xdotool", args...).CombinedOutput()
+	cmd := exec.Command("xdotool", args...)
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("xdotool error: %w — %s (is xdotool installed? sudo apt install xdotool)", err, strings.TrimSpace(string(out)))
 	}
