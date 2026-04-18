@@ -138,8 +138,8 @@ go 1.21 or later
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/AzozzALFiras/nullhand
-cd nullhand
+git clone https://github.com/iamakillah/Nullhand_Linux
+cd Nullhand_Linux
 
 # 2. Install system dependencies (see Requirements above)
 sudo apt install xdotool scrot wmctrl xclip imagemagick python3 \
@@ -754,13 +754,10 @@ sudo apt install -y git golang xdotool scrot wmctrl xclip imagemagick python3-py
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-change`
-3. Make your changes
-4. Build and verify: `GOOS=linux go build ./...`
-5. Open a pull request
-
-Linux-specific code lives under `internal/service/linux/` and uses the `//go:build linux` build tag. Keep platform-specific code behind that tag.
+This is a Linux port of the original Nullhand by AzozzALFiras.
+Original repo: https://github.com/AzozzALFiras/Nullhand
+To contribute to this Linux port, fork https://github.com/iamakillah/Nullhand_Linux
+and open a pull request.
 
 ---
 
