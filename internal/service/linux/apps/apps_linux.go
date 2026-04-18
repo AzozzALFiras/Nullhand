@@ -78,10 +78,21 @@ var binaryFallbackMap = map[string][]string{
 func Open(appName string) error {
 	normalised := strings.ToLower(strings.TrimSpace(appName))
 
+	// launched waits 500ms for the app to start, then tries to focus it.
 	launched := func() {
-		time.Sleep(120 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		_ = Focus(appName)
-		time.Sleep(180 * time.Millisecond)
+	}
+
+	// startBinary starts a detached process with DISPLAY set and no inherited
+	// stdin/stdout/stderr (safe to call from a non-interactive bot process).
+	startBinary := func(name string, args ...string) error {
+		cmd := exec.Command(name, args...)
+		cmd.Env = append(os.Environ(), "DISPLAY=:0")
+		cmd.Stdin = nil
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		return cmd.Start()
 	}
 
 	// 1. Try the traditional .desktop ID map (APT installs, GNOME).
@@ -109,9 +120,7 @@ func Open(appName string) error {
 	// 4. Try known binary candidates (Lubuntu, Xfce, LXDE, KDE variants).
 	if candidates, ok := binaryFallbackMap[normalised]; ok {
 		for _, bin := range candidates {
-			cmd := exec.Command(bin)
-			cmd.Env = append(os.Environ(), "DISPLAY=:0")
-			if err := cmd.Start(); err == nil {
+			if err := startBinary(bin); err == nil {
 				launched()
 				return nil
 			}
@@ -119,17 +128,13 @@ func Open(appName string) error {
 	}
 
 	// 5. Try `snap run <name>` (catches any snap not in snapDesktopIDMap).
-	snapCmd := exec.Command("snap", "run", normalised)
-	snapCmd.Env = append(os.Environ(), "DISPLAY=:0")
-	if err := snapCmd.Start(); err == nil {
+	if err := startBinary("snap", "run", normalised); err == nil {
 		launched()
 		return nil
 	}
 
 	// 6. Last resort: run the normalised name as a binary.
-	cmd := exec.Command(normalised)
-	cmd.Env = append(os.Environ(), "DISPLAY=:0")
-	if err := cmd.Start(); err != nil {
+	if err := startBinary(normalised); err != nil {
 		return fmt.Errorf("open %q: all launch methods failed (gtk-launch, snap, binary: %w)", appName, err)
 	}
 	launched()
@@ -211,8 +216,13 @@ func CloseApp(name string) error {
 }
 
 // gtkLaunch launches an application via gtk-launch with the given desktop ID.
+// DISPLAY=:0 is set explicitly so this works from a non-interactive bot process.
 func gtkLaunch(desktopID string) error {
 	cmd := exec.Command("gtk-launch", desktopID)
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("gtk-launch %q: %w", desktopID, err)
 	}
