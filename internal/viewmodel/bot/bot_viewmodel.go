@@ -277,6 +277,55 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		return
 	}
 
+	// Reply keyboard button text detection (non-slash persistent toolbar buttons).
+	chatID := msg.Chat.ID
+	userID := msg.From.ID
+	switch strings.TrimSpace(msg.Text) {
+	case "🐚 Run Command":
+		vm.auditLog(userID, "shell")
+		vm.send(chatID, "🐚 Enter the shell command:")
+		vm.pendingMu.Lock()
+		vm.pending[chatID] = make(chan string, 1)
+		vm.pendingMu.Unlock()
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			reply, err := vm.waitForConfirmation(ctx, chatID, 5*time.Minute)
+			if err != nil || reply == "" {
+				return
+			}
+			vm.auditLog(userID, "shell", fmt.Sprintf(`cmd=%q`, reply))
+			workingMsgID, _ := vm.sendWorking(chatID)
+			result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "shell", Args: strings.Fields(reply)})
+			if workingMsgID > 0 {
+				_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
+			} else {
+				vm.send(chatID, result.Text)
+			}
+		}()
+		return
+	case "📤 Send File":
+		vm.auditLog(userID, "file_send")
+		vm.send(chatID, "📤 Enter the full file path to send:")
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			reply, err := vm.waitForConfirmation(ctx, chatID, 5*time.Minute)
+			if err != nil || reply == "" {
+				return
+			}
+			path := strings.TrimSpace(reply)
+			vm.auditLog(userID, "file_send", fmt.Sprintf(`path=%q`, path))
+			_ = filetransfer.SendFile(vm.tg, chatID, path)
+		}()
+		return
+	case "🔒 Lock Bot":
+		vm.auditLog(userID, "otp_lock")
+		vm.otp.Lock()
+		vm.send(chatID, "🔒 Bot locked. Enter new OTP to unlock.")
+		return
+	}
+
 	// If a menu is active and user sends a number, treat it as menu selection.
 	if vm.menu.IsActive(msg.Chat.ID) {
 		text := strings.TrimSpace(msg.Text)
@@ -760,7 +809,7 @@ func (vm *ViewModel) handleSaveCallback(cb *msgmodel.CallbackQuery) {
 // handleScheduleCommand processes /schedule list|cancel <id>|clear.
 func (vm *ViewModel) handleScheduleCommand(chatID int64, userID int64, args []string) {
 	if len(args) == 0 {
-		vm.send(chatID, "Usage: /schedule list | /schedule cancel <id> | /schedule clear")
+		vm.send(chatID, "Usage: /schedule list | /schedule cancel [id] | /schedule clear")
 		return
 	}
 	switch args[0] {
@@ -775,11 +824,11 @@ func (vm *ViewModel) handleScheduleCommand(chatID int64, userID int64, args []st
 		for _, t := range tasks {
 			sb.WriteString(fmt.Sprintf("🆔 %s — %s — every day at %02d:%02d\n", t.ID, t.Label, t.Hour, t.Minute))
 		}
-		sb.WriteString("\nUse /schedule cancel <id> to remove a task.")
+		sb.WriteString("\nUse /schedule cancel [id] to remove a task.")
 		vm.send(chatID, sb.String())
 	case "cancel":
 		if len(args) < 2 {
-			vm.send(chatID, "Usage: /schedule cancel <id>")
+			vm.send(chatID, "Usage: /schedule cancel [id]")
 			return
 		}
 		id := args[1]
@@ -794,7 +843,7 @@ func (vm *ViewModel) handleScheduleCommand(chatID int64, userID int64, args []st
 		vm.auditLog(userID, "schedule_cancel", `id="all"`)
 		vm.send(chatID, "✅ All tasks cleared.")
 	default:
-		vm.send(chatID, "Usage: /schedule list | /schedule cancel <id> | /schedule clear")
+		vm.send(chatID, "Usage: /schedule list | /schedule cancel [id] | /schedule clear")
 	}
 }
 

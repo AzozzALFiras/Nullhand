@@ -4,34 +4,34 @@ import (
 	"github.com/iamakillah/Nullhand_Linux/internal/service/telegram"
 )
 
-// SendMenu sends the persistent shortcut toolbar with inline keyboard buttons.
-// It is called after successful OTP unlock and on /menu or /start.
+// SendMenu sends the persistent reply keyboard toolbar to the chat.
+// Buttons that map to slash commands send the slash command text directly.
+// Buttons for interactive actions send a phrase detected in handleUpdate.
 func SendMenu(tg *telegram.Client, chatID int64) error {
-	keyboard := &telegram.InlineKeyboardMarkup{
-		InlineKeyboard: [][]telegram.InlineKeyboardButton{
+	keyboard := &telegram.ReplyKeyboardMarkup{
+		Keyboard: [][]telegram.KeyboardButton{
 			{
-				{Text: "📸 Screenshot", CallbackData: "menu:screenshot"},
-				{Text: "💻 System Info", CallbackData: "menu:sysinfo"},
+				{Text: "/screenshot"},
+				{Text: "/status"},
 			},
 			{
-				{Text: "📋 Clipboard", CallbackData: "menu:clipboard"},
-				{Text: "🐚 Run Command", CallbackData: "menu:shell"},
+				{Text: "/ocr"},
+				{Text: "/paste"},
 			},
 			{
-				{Text: "📤 Send File", CallbackData: "menu:sendfile"},
-				{Text: "📥 Downloads", CallbackData: "menu:downloads"},
+				{Text: "🐚 Run Command"},
+				{Text: "📤 Send File"},
 			},
 			{
-				{Text: "🔍 Read Screen", CallbackData: "menu:ocr"},
-				{Text: "🔒 Lock Bot", CallbackData: "menu:lock"},
+				{Text: "/ls /home/iam404/Downloads"},
+				{Text: "🔒 Lock Bot"},
 			},
 			{
-				{Text: "❓ Help", CallbackData: "menu:help"},
+				{Text: "/help"},
 			},
 		},
+		ResizeKeyboard: true,
+		Persistent:     true,
 	}
-
-	text := "🖥️ Nullhand — Quick Actions"
-	_, err := tg.SendMessageWithKeyboard(chatID, text, keyboard)
-	return err
+	return tg.SendMessageWithReplyKeyboard(chatID, "🖥️ Nullhand — Quick Actions", keyboard)
 }

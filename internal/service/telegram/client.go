@@ -76,6 +76,19 @@ type InlineKeyboardMarkup struct {
 	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
 }
 
+// KeyboardButton is a single button in a reply keyboard.
+type KeyboardButton struct {
+	Text string `json:"text"`
+}
+
+// ReplyKeyboardMarkup shows a persistent keyboard at the bottom of the chat.
+type ReplyKeyboardMarkup struct {
+	Keyboard        [][]KeyboardButton `json:"keyboard"`
+	ResizeKeyboard  bool               `json:"resize_keyboard"`
+	OneTimeKeyboard bool               `json:"one_time_keyboard"`
+	Persistent      bool               `json:"is_persistent"`
+}
+
 // SendMessage sends a plain text message to chatID.
 func (c *Client) SendMessage(chatID int64, text string) error {
 	payload := map[string]any{
@@ -121,6 +134,17 @@ func (c *Client) SendMessageWithKeyboard(chatID int64, text string, keyboard *In
 		return 0, fmt.Errorf("sendMessage: telegram returned ok=false")
 	}
 	return result.Result.MessageID, nil
+}
+
+// SendMessageWithReplyKeyboard sends a text message with a persistent reply keyboard.
+func (c *Client) SendMessageWithReplyKeyboard(chatID int64, text string, keyboard *ReplyKeyboardMarkup) error {
+	payload := map[string]any{
+		"chat_id":      chatID,
+		"text":         text,
+		"parse_mode":   "HTML",
+		"reply_markup": keyboard,
+	}
+	return c.post("sendMessage", payload)
 }
 
 // EditMessage edits an existing message's text and keyboard.

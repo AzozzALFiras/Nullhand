@@ -70,7 +70,7 @@ func Confirm(description string) string {
 func Help() string {
 	return `<b>👋 Welcome to Nullhand</b>
 
-Your invisible hand on the Mac.
+Your invisible hand on the Linux machine.
 
 <b>Two ways to control your machine:</b>
 
@@ -97,7 +97,7 @@ Just type a task in plain English or Arabic. Example:
 /stop — cancel current AI task
 /help — show this message
 
-Tip: use /screenshot often — it is your eyes on the Mac.`
+Tip: use /screenshot often — it is your eyes on the Linux machine.`
 }
 
 // StatusReport formats a system status reply.
