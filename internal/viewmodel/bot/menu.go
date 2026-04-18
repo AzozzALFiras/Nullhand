@@ -5,29 +5,28 @@ import (
 )
 
 // SendMenu sends the persistent reply keyboard toolbar to the chat.
-// Buttons that map to slash commands send the slash command text directly.
-// Buttons for interactive actions send a phrase detected in handleUpdate.
+// All button texts are friendly labels; handleUpdate maps them to actions.
 func SendMenu(tg *telegram.Client, chatID int64) error {
 	keyboard := &telegram.ReplyKeyboardMarkup{
 		Keyboard: [][]telegram.KeyboardButton{
 			{
-				{Text: "/screenshot"},
-				{Text: "/status"},
+				{Text: "📸 Screenshot"},
+				{Text: "💻 System Info"},
 			},
 			{
-				{Text: "/ocr"},
-				{Text: "/paste"},
+				{Text: "🔍 Read Screen"},
+				{Text: "📋 Clipboard"},
 			},
 			{
 				{Text: "🐚 Run Command"},
 				{Text: "📤 Send File"},
 			},
 			{
-				{Text: "/ls /home/iam404/Downloads"},
+				{Text: "📥 Downloads"},
 				{Text: "🔒 Lock Bot"},
 			},
 			{
-				{Text: "/help"},
+				{Text: "❓ Help"},
 			},
 		},
 		ResizeKeyboard: true,

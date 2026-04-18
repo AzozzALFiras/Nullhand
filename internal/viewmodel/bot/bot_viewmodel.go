@@ -2,16 +2,20 @@ package bot
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/iamakillah/Nullhand_Linux/internal/audit"
 	auth "github.com/iamakillah/Nullhand_Linux/internal/auth"
+	aimodel "github.com/iamakillah/Nullhand_Linux/internal/model/ai"
 	cmdmodel "github.com/iamakillah/Nullhand_Linux/internal/model/command"
 	configmodel "github.com/iamakillah/Nullhand_Linux/internal/model/config"
 	msgmodel "github.com/iamakillah/Nullhand_Linux/internal/model/message"
@@ -28,6 +32,7 @@ import (
 	"github.com/iamakillah/Nullhand_Linux/internal/service/ai/openai"
 	filetransfer "github.com/iamakillah/Nullhand_Linux/internal/service/linux/filetransfer"
 	ocrsvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/ocr"
+	screensvc "github.com/iamakillah/Nullhand_Linux/internal/service/linux/screen"
 	recipesvc "github.com/iamakillah/Nullhand_Linux/internal/service/recipe"
 	tgsvc "github.com/iamakillah/Nullhand_Linux/internal/service/telegram"
 	tgfmt "github.com/iamakillah/Nullhand_Linux/internal/view/telegram"
@@ -37,6 +42,10 @@ import (
 	routervm "github.com/iamakillah/Nullhand_Linux/internal/viewmodel/router"
 	sessionvm "github.com/iamakillah/Nullhand_Linux/internal/viewmodel/session"
 )
+
+// clickTriggerRe matches natural-language click requests such as
+// "click the Close button", "click on Submit", "press OK", "tap the icon".
+var clickTriggerRe = regexp.MustCompile(`(?i)^(?:click(?:\s+on)?|press|tap)(?:\s+(?:the|on|a))?\s+(.+?)(?:\s+button)?$`)
 
 // ViewModel is the top-level orchestrator: it wires the poller, router,
 // command handler, and AI agent together.
@@ -277,10 +286,65 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		return
 	}
 
-	// Reply keyboard button text detection (non-slash persistent toolbar buttons).
+	// Reply keyboard button text detection — friendly-label buttons in the
+	// persistent toolbar. Each case maps a button label to its action.
 	chatID := msg.Chat.ID
 	userID := msg.From.ID
 	switch strings.TrimSpace(msg.Text) {
+	case "📸 Screenshot":
+		vm.auditLog(userID, "screenshot")
+		workingMsgID, _ := vm.sendWorking(chatID)
+		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "screenshot"})
+		if workingMsgID > 0 && result.ImageData != nil {
+			_ = vm.tg.DeleteMessage(chatID, workingMsgID)
+			_ = vm.tg.SendPhoto(chatID, result.ImageData, "")
+		} else if result.ImageData != nil {
+			_ = vm.tg.SendPhoto(chatID, result.ImageData, "")
+		} else {
+			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
+		}
+		return
+	case "💻 System Info":
+		vm.auditLog(userID, "sysinfo")
+		workingMsgID, _ := vm.sendWorking(chatID)
+		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "status"})
+		if workingMsgID > 0 {
+			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
+		} else {
+			vm.send(chatID, result.Text)
+		}
+		return
+	case "🔍 Read Screen":
+		vm.auditLog(userID, "ocr")
+		go vm.runOCR(chatID)
+		return
+	case "📋 Clipboard":
+		vm.auditLog(userID, "clipboard")
+		workingMsgID, _ := vm.sendWorking(chatID)
+		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "paste"})
+		if workingMsgID > 0 {
+			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
+		} else {
+			vm.send(chatID, result.Text)
+		}
+		return
+	case "📥 Downloads":
+		vm.auditLog(userID, "downloads")
+		home, _ := os.UserHomeDir()
+		downloadsPath := filepath.Join(home, "Downloads")
+		workingMsgID, _ := vm.sendWorking(chatID)
+		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "ls", Args: []string{downloadsPath}})
+		if workingMsgID > 0 {
+			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
+		} else {
+			vm.send(chatID, result.Text)
+		}
+		return
+	case "❓ Help":
+		vm.auditLog(userID, "help")
+		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "help"})
+		vm.send(chatID, result.Text)
+		return
 	case "🐚 Run Command":
 		vm.auditLog(userID, "shell")
 		vm.send(chatID, "🐚 Enter the shell command:")
@@ -336,6 +400,15 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 			}
 			return
 		}
+	}
+
+	// Natural language click detection: "click the X button", "press X", etc.
+	// Intercept before AI routing to avoid burning agent tokens.
+	if m := clickTriggerRe.FindStringSubmatch(strings.TrimSpace(msg.Text)); m != nil {
+		target := strings.TrimSpace(m[1])
+		vm.auditLog(userID, "vision_click_attempt", fmt.Sprintf(`target=%q`, target))
+		go vm.runVisionClick(chatID, userID, target)
+		return
 	}
 
 	route := vm.router.Dispatch(msg)
@@ -1029,6 +1102,91 @@ func isOCRTrigger(text string) bool {
 		}
 	}
 	return false
+}
+
+// runVisionClick takes a screenshot, asks the vision AI to locate the target
+// UI element, parses the returned CLICK:x,y coordinates, and clicks there.
+func (vm *ViewModel) runVisionClick(chatID int64, userID int64, target string) {
+	// Require vision-capable provider.
+	vc, ok := vm.agent.Provider().(aisvc.VisionCapable)
+	if !ok || !vc.SupportsVision() {
+		vm.send(chatID, "❌ Current AI provider does not support vision. Use /click `x` `y` for coordinate-based clicking.")
+		return
+	}
+
+	workingMsgID, _ := vm.sendWorking(chatID)
+	updateWorking := func(text string) {
+		if workingMsgID > 0 {
+			_ = vm.tg.EditMessage(chatID, workingMsgID, text, nil)
+		} else {
+			vm.send(chatID, text)
+		}
+	}
+
+	// Step 1: capture the screen.
+	imgData, err := screensvc.Capture()
+	if err != nil {
+		updateWorking(tgfmt.FailWith("screenshot", err))
+		return
+	}
+
+	// Step 2: ask the vision AI to find the element.
+	imgB64 := base64.StdEncoding.EncodeToString(imgData)
+	prompt := fmt.Sprintf(
+		"Look at this screenshot. Find the UI element described as: %s.\nReturn ONLY the x,y pixel coordinates as: CLICK:x,y",
+		target,
+	)
+	messages := []aimodel.Message{
+		{
+			Role: aimodel.RoleUser,
+			Parts: []aimodel.MessagePart{
+				{Type: aimodel.ContentTypeText, Text: prompt},
+				{Type: aimodel.ContentTypeImage, ImageBase64: imgB64, MimeType: "image/png"},
+			},
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resp, err := vm.agent.Provider().Chat(ctx, messages, nil)
+	if err != nil {
+		updateWorking(tgfmt.FailWith("vision AI", err))
+		return
+	}
+
+	// Step 3: parse CLICK:x,y from the AI response.
+	x, y, found := parseClickCoords(resp.Text)
+	if !found {
+		updateWorking(fmt.Sprintf("❌ Could not locate %q on screen. AI response: %s", target, resp.Text))
+		return
+	}
+
+	// Step 4: execute the click.
+	result := vm.cmdExec.Execute(&cmdmodel.Command{
+		Name: "click",
+		Args: []string{strconv.Itoa(x), strconv.Itoa(y)},
+	})
+	if strings.HasPrefix(result.Text, "✗") {
+		updateWorking(result.Text)
+		return
+	}
+	vm.auditLog(userID, "vision_click", fmt.Sprintf(`target=%q x=%d y=%d`, target, x, y))
+	updateWorking(fmt.Sprintf("✅ Clicked %q at (%d, %d)", target, x, y))
+}
+
+// parseClickCoords extracts x,y from a string containing "CLICK:x,y".
+func parseClickCoords(s string) (int, int, bool) {
+	re := regexp.MustCompile(`CLICK:(\d+),(\d+)`)
+	m := re.FindStringSubmatch(s)
+	if m == nil {
+		return 0, 0, false
+	}
+	x, err1 := strconv.Atoi(m[1])
+	y, err2 := strconv.Atoi(m[2])
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return x, y, true
 }
 
 // buildProvider constructs the AI provider from config.
