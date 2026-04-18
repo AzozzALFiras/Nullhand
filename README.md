@@ -568,6 +568,190 @@ ollama pull llama3
 
 ---
 
+## Troubleshooting
+
+### Bot can't connect to Telegram
+**Symptom:** `dial tcp: lookup api.telegram.org: server misbehaving` or connection timeout errors in terminal.
+
+**Fix:** Your DNS may not be resolving correctly. Run:
+```bash
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+```
+Then restart the bot.
+
+If on a VM, also try:
+```bash
+sudo systemctl restart NetworkManager
+```
+
+---
+
+### Screenshot not working / scrot fails silently
+**Symptom:** `/screenshot` returns nothing, or `scrot` produces an empty file.
+
+**Fix 1 — Set DISPLAY variable:**
+```bash
+export DISPLAY=:0
+```
+Add this to your `~/.bashrc` to make it permanent:
+```bash
+echo 'export DISPLAY=:0' >> ~/.bashrc && source ~/.bashrc
+```
+
+**Fix 2 — Allow local X11 connections:**
+```bash
+xhost +local:
+```
+Run this after every login, or add it to your startup applications.
+
+**Fix 3 — Verify scrot works manually:**
+```bash
+DISPLAY=:0 scrot /tmp/test.png && echo "works" && ls -la /tmp/test.png
+```
+If the file is 0 bytes, your X11 session may not be properly initialized.
+
+---
+
+### Must use X11, not Wayland
+**Symptom:** `$DISPLAY not set` error on startup, or xdotool/scrot failing completely.
+
+**Cause:** Nullhand requires an X11 session. Wayland is not supported in v1.
+
+**Fix:** At the login screen, click the gear icon ⚙️ and select **"Ubuntu on Xorg"**
+(or your distro's equivalent X11 session) before logging in.
+
+To verify you're on X11:
+```bash
+echo $XDG_SESSION_TYPE
+```
+Should output `x11`. If it outputs `wayland`, log out and select Xorg session.
+
+---
+
+### xdotool not working / click and type commands fail
+**Symptom:** `/click`, `/type`, `/key` return ✓ but nothing happens on screen.
+
+**Fix:** Ensure DISPLAY is set and xdotool can reach the display:
+```bash
+export DISPLAY=:0
+xdotool getactivewindow
+```
+If `getactivewindow` returns a window ID, xdotool is working correctly.
+If it errors, your X11 session needs the local connection fix:
+```bash
+xhost +local:
+```
+
+---
+
+### OCR returns empty or garbled text
+**Symptom:** `/ocr` returns no text or random characters.
+
+**Cause:** Tesseract may not be installed, or the screen content is purely graphical.
+
+**Fix:**
+```bash
+sudo apt install tesseract-ocr
+tesseract --version
+```
+
+Note: OCR works best on text-heavy screens. Purely graphical content (icons, images)
+will return little or no text — this is expected behavior.
+
+---
+
+### Clipboard commands not working (/paste returns empty)
+**Symptom:** `/paste` returns empty or fails silently.
+
+**Fix:** Ensure xclip is installed and DISPLAY is set:
+```bash
+sudo apt install xclip
+export DISPLAY=:0
+xclip -selection clipboard -o
+```
+If xclip errors with "Can't open display", run `xhost +local:` first.
+
+---
+
+### AI agent not responding / "empty choices" error
+**Symptom:** Natural language commands return `AI call failed: empty choices` or similar.
+
+**Cause:** Your AI provider's API is unavailable or the API key has no credits.
+
+**Fix options:**
+1. Switch to the built-in local provider (no API key needed):
+   Edit `~/.nullhand/config.json` and set `"ai_provider": "local"`
+2. Check your API key has credits at your provider's dashboard
+3. Try a different AI provider
+
+Note: The `local` provider handles simple commands (open app, screenshot, status)
+but does not support vision or complex multi-step tasks.
+
+---
+
+### OTP code not showing / bot not starting
+**Symptom:** Bot starts but no OTP box appears, or bot exits immediately.
+
+**Fix:** Check the terminal output for error messages. Common causes:
+- Missing dependencies → run the full `apt install` command from the Requirements section
+- Wrong display session → ensure you're on X11 not Wayland
+- Config file corrupted → delete `~/.nullhand/config.json` and run setup again:
+```bash
+rm ~/.nullhand/config.json && ./nullhand
+```
+
+---
+
+### Running in a VirtualBox VM
+
+**Clipboard sharing between host and VM:**
+```bash
+sudo apt install virtualbox-guest-x11
+sudo reboot
+```
+Then in VirtualBox menu: **Devices → Shared Clipboard → Bidirectional**
+
+**No internet in VM:**
+1. In VirtualBox Settings → Network → change to **Bridged Adapter**
+2. Select your active network adapter (WiFi or Ethernet) from the Name dropdown
+3. Start VM and run:
+```bash
+sudo systemctl restart NetworkManager
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+ping google.com
+```
+
+**Slow performance:**
+Allocate more resources in VirtualBox Settings:
+- RAM: 4096 MB recommended
+- CPUs: 2 minimum
+- Video Memory: 128 MB (Display settings)
+
+---
+
+### Scheduled tasks not firing
+**Symptom:** Scheduled tasks were set but never executed.
+
+**Cause:** Tasks are stored in memory only. They are lost when the bot restarts.
+
+**Fix:** Re-create your scheduled tasks after each bot restart. Persistent scheduling
+across restarts is planned for a future version.
+
+---
+
+### General dependency check
+Run this to verify all required tools are installed:
+```bash
+which git go xdotool scrot wmctrl xclip convert tesseract && echo "✅ All dependencies found"
+```
+
+If any are missing:
+```bash
+sudo apt install -y git golang xdotool scrot wmctrl xclip imagemagick python3-pyatspi at-spi2-core desktop-file-utils tesseract-ocr
+```
+
+---
+
 ## Contributing
 
 1. Fork the repository
