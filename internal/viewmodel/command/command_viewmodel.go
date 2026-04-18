@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
@@ -130,6 +131,7 @@ func (vm *ViewModel) screenshot(args []string) Result {
 	} else {
 		data, err = screensvc.Capture()
 	}
+	log.Printf("DEBUG screenshot: data=%d bytes err=%v", len(data), err)
 	if err != nil {
 		return Result{Text: tgfmt.Fail(err)}
 	}
