@@ -77,34 +77,13 @@ func CheckDependencies() error {
 	)
 }
 
-// checkScreenRecording attempts a small screenshot with scrot and verifies
-// that the output file has a reasonable size.
+// checkScreenRecording checks that the scrot binary is present on PATH.
+// We do not attempt an actual capture here — on Lubuntu/LXQt and other
+// lightweight desktops scrot may fail during the permissions probe even
+// though it works fine at runtime (e.g. no compositor yet, locked screen).
 func checkScreenRecording() bool {
-	f, err := os.CreateTemp("", "nullhand-perm-*.png")
-	if err != nil {
-		return false
-	}
-	path := f.Name()
-	f.Close()
-	defer os.Remove(path)
-
-	var stderr bytes.Buffer
-	cmd := exec.Command("scrot", path)
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return false
-	}
-
-	se := strings.ToLower(stderr.String())
-	if strings.Contains(se, "error") || strings.Contains(se, "permission") {
-		return false
-	}
-
-	info, err := os.Stat(path)
-	if err != nil || info.Size() < 500 {
-		return false
-	}
-	return true
+	_, err := exec.LookPath("scrot")
+	return err == nil
 }
 
 // checkAccessibility verifies that xdotool can query the active window.

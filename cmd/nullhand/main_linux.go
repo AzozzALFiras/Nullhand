@@ -33,9 +33,11 @@ func main() {
 	}
 
 	// Check Linux capabilities before starting the bot.
+	// Non-blocking: print a warning but always continue so the user can
+	// decide whether the missing capability matters for their use case.
 	if !permvm.New().Ensure() {
-		fmt.Println("Please grant the missing capabilities and restart.")
-		os.Exit(1)
+		fmt.Println("⚠ Warning: some capabilities are missing. Certain features may not work.")
+		fmt.Println("  Continuing anyway — restart after granting the missing capabilities if needed.")
 	}
 
 	bot, err := botvm.New(cfg)
