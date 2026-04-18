@@ -125,22 +125,23 @@ func (vm *ViewModel) Start() {
 // defaultMenu is the list of commands shown in the Telegram UI menu.
 func defaultMenu() []tgsvc.BotCommand {
 	return []tgsvc.BotCommand{
-		{Command: "start", Description: "Welcome + command list"},
-		{Command: "help", Description: "Show all commands"},
+		{Command: "help", Description: "Show help message"},
 		{Command: "screenshot", Description: "Capture the screen"},
 		{Command: "status", Description: "CPU, memory, active app"},
-		{Command: "apps", Description: "List running applications"},
+		{Command: "ocr", Description: "Read text from screen"},
+		{Command: "shell", Description: "Run a shell command"},
+		{Command: "type", Description: "Type text on screen"},
+		{Command: "click", Description: "Click at coordinates"},
+		{Command: "key", Description: "Press a key shortcut"},
 		{Command: "open", Description: "Open an application"},
+		{Command: "paste", Description: "Get clipboard content"},
+		{Command: "copy", Description: "Set clipboard content"},
 		{Command: "ls", Description: "List directory contents"},
 		{Command: "read", Description: "Read a file"},
-		{Command: "shell", Description: "Run a whitelisted shell command"},
-		{Command: "click", Description: "Click at x y coordinates"},
-		{Command: "type", Description: "Type text"},
-		{Command: "key", Description: "Press a key or shortcut"},
-		{Command: "paste", Description: "Get clipboard contents"},
-		{Command: "stop", Description: "Cancel current AI task"},
-		{Command: "diag", Description: "Show diagnostic info (frontmost app, apps, screen)"},
-		{Command: "inspect", Description: "Dump AX tree of frontmost window (debug)"},
+		{Command: "apps", Description: "List running apps"},
+		{Command: "schedule", Description: "Manage scheduled tasks"},
+		{Command: "menu", Description: "Show quick action toolbar"},
+		{Command: "stop", Description: "Stop current AI task"},
 	}
 }
 
@@ -316,6 +317,14 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		if route.Command.Name == "ocr" {
 			vm.auditLog(msg.From.ID, "ocr")
 			go vm.runOCR(msg.Chat.ID)
+			return
+		}
+		// /menu sends the inline toolbar directly.
+		if route.Command.Name == "menu" {
+			vm.auditLog(msg.From.ID, "menu")
+			if err := SendMenu(vm.tg, msg.Chat.ID); err != nil {
+				vm.send(msg.Chat.ID, "❌ Failed to send menu")
+			}
 			return
 		}
 		// Audit the manual command before executing it.
