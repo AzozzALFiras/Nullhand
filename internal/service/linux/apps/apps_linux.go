@@ -4,6 +4,7 @@ package apps
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -44,36 +45,94 @@ var desktopIDMap = map[string]string{
 	"system monitor":      "gnome-system-monitor",
 }
 
+// snapDesktopIDMap maps normalised app names to their Snap package desktop IDs.
+// Snap installs use the pattern <snap-name>_<app-name> as the .desktop file ID.
+var snapDesktopIDMap = map[string]string{
+	"firefox":   "firefox_firefox",
+	"chromium":  "chromium_chromium",
+	"telegram":  "telegram-desktop_telegram-desktop",
+	"discord":   "discord_discord",
+	"spotify":   "spotify_spotify",
+	"vlc":       "vlc_vlc",
+	"slack":     "slack_slack",
+	"code":      "code_code",
+	"vscode":    "code_code",
+	"vs code":   "code_code",
+	"visual studio code": "code_code",
+}
+
+// binaryFallbackMap maps normalised app names to candidate binary names tried
+// in order. Handles distros (Lubuntu, Xfce, KDE) where the primary desktop ID
+// or gtk-launch is unavailable.
+var binaryFallbackMap = map[string][]string{
+	"firefox":      {"firefox"},
+	"chromium":     {"chromium", "chromium-browser"},
+	"terminal":     {"lxterminal", "xfce4-terminal", "xterm", "gnome-terminal", "konsole", "qterminal"},
+	"files":        {"pcmanfm", "thunar", "nemo", "nautilus"},
+	"file manager": {"pcmanfm", "thunar", "nemo", "nautilus"},
+	"text editor":  {"mousepad", "xed", "gedit", "kate", "geany"},
+	"calculator":   {"galculator", "gnome-calculator", "kcalc"},
+}
+
 // Open launches an application by name and brings it to the foreground.
 func Open(appName string) error {
 	normalised := strings.ToLower(strings.TrimSpace(appName))
 
-	// 1. Try the .desktop ID map first (most reliable).
+	launched := func() {
+		time.Sleep(120 * time.Millisecond)
+		_ = Focus(appName)
+		time.Sleep(180 * time.Millisecond)
+	}
+
+	// 1. Try the traditional .desktop ID map (APT installs, GNOME).
 	if id, ok := desktopIDMap[normalised]; ok {
 		if err := gtkLaunch(id); err == nil {
-			time.Sleep(120 * time.Millisecond)
-			_ = Focus(appName)
-			time.Sleep(180 * time.Millisecond)
+			launched()
 			return nil
 		}
 	}
 
-	// 2. Try gtk-launch with the raw app name as the desktop ID.
+	// 2. Try the Snap desktop ID (e.g. firefox_firefox for snap Firefox).
+	if id, ok := snapDesktopIDMap[normalised]; ok {
+		if err := gtkLaunch(id); err == nil {
+			launched()
+			return nil
+		}
+	}
+
+	// 3. Try gtk-launch with the raw normalised name as the desktop ID.
 	if err := gtkLaunch(normalised); err == nil {
-		time.Sleep(120 * time.Millisecond)
-		_ = Focus(appName)
-		time.Sleep(180 * time.Millisecond)
+		launched()
 		return nil
 	}
 
-	// 3. Last resort: run as a binary directly.
-	cmd := exec.Command(appName)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("open %q: %w (install the app or check its .desktop file)", appName, err)
+	// 4. Try known binary candidates (Lubuntu, Xfce, LXDE, KDE variants).
+	if candidates, ok := binaryFallbackMap[normalised]; ok {
+		for _, bin := range candidates {
+			cmd := exec.Command(bin)
+			cmd.Env = append(os.Environ(), "DISPLAY=:0")
+			if err := cmd.Start(); err == nil {
+				launched()
+				return nil
+			}
+		}
 	}
-	time.Sleep(120 * time.Millisecond)
-	_ = Focus(appName)
-	time.Sleep(180 * time.Millisecond)
+
+	// 5. Try `snap run <name>` (catches any snap not in snapDesktopIDMap).
+	snapCmd := exec.Command("snap", "run", normalised)
+	snapCmd.Env = append(os.Environ(), "DISPLAY=:0")
+	if err := snapCmd.Start(); err == nil {
+		launched()
+		return nil
+	}
+
+	// 6. Last resort: run the normalised name as a binary.
+	cmd := exec.Command(normalised)
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("open %q: all launch methods failed (gtk-launch, snap, binary: %w)", appName, err)
+	}
+	launched()
 	return nil
 }
 
