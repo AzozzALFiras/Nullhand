@@ -262,11 +262,13 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		return
 	}
 
-	// Custom path for pending download
+	// Custom path for pending download — only consume the message if the user
+	// explicitly tapped "Custom path" (AwaitingCustomPath=true). Reply keyboard
+	// button taps (plain text like "💻 System Info") must NOT be treated as paths.
 	vm.pendingDownloadsMu.Lock()
 	pendingDownload, hasPendingDownload := vm.pendingDownloads[msg.Chat.ID]
 	vm.pendingDownloadsMu.Unlock()
-	if hasPendingDownload {
+	if hasPendingDownload && pendingDownload.AwaitingCustomPath {
 		destDir := strings.TrimSpace(msg.Text)
 		vm.pendingDownloadsMu.Lock()
 		delete(vm.pendingDownloads, msg.Chat.ID)
@@ -858,6 +860,10 @@ func (vm *ViewModel) handleSaveCallback(cb *msgmodel.CallbackQuery) {
 		destDir = filepath.Join(home, "Downloads")
 	case "custom":
 		_ = vm.tg.AnswerCallbackQuery(cb.ID, "Enter path")
+		vm.pendingDownloadsMu.Lock()
+		pending.AwaitingCustomPath = true
+		vm.pendingDownloads[chatID] = pending
+		vm.pendingDownloadsMu.Unlock()
 		vm.send(chatID, "📁 Enter the full destination path (e.g. /home/user/documents/):")
 		return
 	default:

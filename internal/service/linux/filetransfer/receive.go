@@ -12,9 +12,10 @@ import (
 
 // PendingDownload holds the file metadata while waiting for the user to choose a destination.
 type PendingDownload struct {
-	FileID   string
-	Filename string
-	MimeType string
+	FileID            string
+	Filename          string
+	MimeType          string
+	AwaitingCustomPath bool // true only after the user tapped "Custom path"
 }
 
 // DownloadAndSave downloads the file from Telegram using the fileID and saves it to destDir.
