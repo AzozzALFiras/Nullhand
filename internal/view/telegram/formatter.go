@@ -6,19 +6,19 @@ import (
 )
 
 // OK returns a simple success reply.
-func OK() string { return "✓" }
+func OK() string { return "✅" }
 
 // OKWith returns a success reply with a message.
-func OKWith(msg string) string { return "✓ " + msg }
+func OKWith(msg string) string { return "✅ " + msg }
 
 // Fail formats an error reply.
 func Fail(err error) string {
-	return "✗ " + escapeHTML(err.Error())
+	return "❌ " + escapeHTML(err.Error())
 }
 
 // FailWith formats an error reply with context label.
 func FailWith(label string, err error) string {
-	return fmt.Sprintf("✗ <b>%s</b>: %s", escapeHTML(label), escapeHTML(err.Error()))
+	return fmt.Sprintf("❌ <b>%s</b>: %s", escapeHTML(label), escapeHTML(err.Error()))
 }
 
 // Code wraps text in an HTML code block for Telegram.
@@ -53,7 +53,7 @@ func Progress(step, message string) string {
 // with parse_mode=HTML.
 func AgentDone(result string) string {
 	if result == "" {
-		return "✓ Done."
+		return "✅ Done."
 	}
 	return escapeHTML(result)
 }
