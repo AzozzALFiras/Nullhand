@@ -55,14 +55,14 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 	case "open_app":
 		app := args["app_name"]
 		if err := appsvc.Open(app); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
+			return textParts(fmt.Sprintf("❌ Could not open %s. Is it installed?", app)), err
 		}
 		return textParts(fmt.Sprintf("opened %s", app)), nil
 
 	case "close_app":
 		app := args["app_name"]
 		if err := appsvc.CloseApp(app); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
+			return textParts(fmt.Sprintf("❌ Could not close %s. Is it running?", app)), err
 		}
 		return textParts(fmt.Sprintf("closed %s", app)), nil
 
@@ -72,7 +72,7 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 			return textParts(fmt.Sprintf("error: %v", err)), err
 		}
 		if err := mousesvc.Click(x, y); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
+			return textParts(fmt.Sprintf("❌ Could not click at %d,%d.", x, y)), err
 		}
 		return textParts(fmt.Sprintf("clicked at %d,%d", x, y)), nil
 
@@ -218,7 +218,7 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 		text := args["text"]
 		prev, hadPrev, err := kbsvc.TypeAndHold(text)
 		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
+			return textParts("❌ Could not type text. Is a window focused?"), err
 		}
 		vm.savedClipboard = prev
 		vm.hadSavedClipboard = hadPrev
@@ -254,7 +254,7 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 	case "press_key":
 		key := args["key"]
 		if err := kbsvc.PressKey(key); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
+			return textParts(fmt.Sprintf("❌ Could not press key %s. Check key name.", key)), err
 		}
 		return textParts(fmt.Sprintf("pressed %s", key)), nil
 
@@ -262,7 +262,11 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 		cmd := args["command"]
 		out, err := shellsvc.Run(cmd)
 		if err != nil {
-			return textParts(fmt.Sprintf("error: %v\n%s", err, out)), err
+			msg := "⚠️ Command exited with error:\n" + err.Error()
+			if out != "" {
+				msg += "\n" + out
+			}
+			return textParts(msg), err
 		}
 		return textParts(out), nil
 

@@ -152,6 +152,9 @@ func (vm *ViewModel) mouseAction(action string, args []string) Result {
 		err = mousesvc.Move(x, y)
 	}
 	if err != nil {
+		if action == "click" {
+			return Result{Text: fmt.Sprintf("❌ Could not click at %d,%d.", x, y)}
+		}
 		return Result{Text: tgfmt.Fail(err)}
 	}
 	return Result{Text: tgfmt.OK()}
@@ -194,7 +197,7 @@ func (vm *ViewModel) typeText(args []string) Result {
 	}
 	text := strings.Join(args, " ")
 	if err := kbsvc.Type(text); err != nil {
-		return Result{Text: tgfmt.Fail(err)}
+		return Result{Text: "❌ Could not type text. Is a window focused?"}
 	}
 	return Result{Text: tgfmt.OK()}
 }
@@ -204,7 +207,7 @@ func (vm *ViewModel) pressKey(args []string) Result {
 		return Result{Text: "Usage: /key `shortcut`  e.g. /key cmd+t"}
 	}
 	if err := kbsvc.PressKey(args[0]); err != nil {
-		return Result{Text: tgfmt.Fail(err)}
+		return Result{Text: fmt.Sprintf("❌ Could not press key %s. Check key name.", args[0])}
 	}
 	return Result{Text: tgfmt.OK()}
 }
@@ -215,7 +218,7 @@ func (vm *ViewModel) openApp(args []string) Result {
 	}
 	appName := strings.Join(args, " ")
 	if err := appsvc.Open(appName); err != nil {
-		return Result{Text: tgfmt.Fail(err)}
+		return Result{Text: fmt.Sprintf("❌ Could not open %s. Is it installed?", appName)}
 	}
 	return Result{Text: tgfmt.OKWith(appName + " opened")}
 }
@@ -228,9 +231,9 @@ func (vm *ViewModel) shell(args []string) Result {
 	out, err := shellsvc.Run(cmdLine)
 	if err != nil {
 		if out != "" {
-			return Result{Text: tgfmt.Code(out) + "\n" + tgfmt.Fail(err)}
+			return Result{Text: "⚠️ Command exited with error:\n" + tgfmt.Code(out)}
 		}
-		return Result{Text: tgfmt.Fail(err)}
+		return Result{Text: "⚠️ Command exited with error:\n" + tgfmt.Fail(err)}
 	}
 	if out == "" {
 		return Result{Text: tgfmt.OK()}
