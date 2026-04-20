@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
-	"github.com/AzozzALFiras/nullhand/internal/service/ai/local/intents"
+	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
+	"github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents"
 )
 
 func init() {

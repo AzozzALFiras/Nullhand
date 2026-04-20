@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	recipemodel "github.com/AzozzALFiras/nullhand/internal/model/recipe"
-	appsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/apps"
-	kbsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/keyboard"
-	palettesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/palette"
+	recipemodel "github.com/AzozzALFiras/Nullhand/internal/model/recipe"
+	appsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/apps"
+	kbsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/keyboard"
+	palettesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/palette"
 )
 
 // Service runs recipes by dispatching their steps to the underlying macOS

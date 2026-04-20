@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/AzozzALFiras/nullhand/internal/model/message"
+	"github.com/AzozzALFiras/Nullhand/internal/model/message"
 )
 
 const apiBase = "https://api.telegram.org/bot"
@@ -24,7 +24,7 @@ type Client struct {
 // NewClient creates a Client for the given bot token.
 func NewClient(token string) *Client {
 	return &Client{
-		token: token,
+		token:      token,
 		httpClient: &http.Client{Timeout: 60 * time.Second},
 	}
 }
@@ -76,6 +76,19 @@ type InlineKeyboardMarkup struct {
 	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
 }
 
+// KeyboardButton is a single button in a reply keyboard.
+type KeyboardButton struct {
+	Text string `json:"text"`
+}
+
+// ReplyKeyboardMarkup shows a persistent keyboard at the bottom of the chat.
+type ReplyKeyboardMarkup struct {
+	Keyboard        [][]KeyboardButton `json:"keyboard"`
+	ResizeKeyboard  bool               `json:"resize_keyboard"`
+	OneTimeKeyboard bool               `json:"one_time_keyboard"`
+	Persistent      bool               `json:"is_persistent"`
+}
+
 // SendMessage sends a plain text message to chatID.
 func (c *Client) SendMessage(chatID int64, text string) error {
 	payload := map[string]any{
@@ -121,6 +134,17 @@ func (c *Client) SendMessageWithKeyboard(chatID int64, text string, keyboard *In
 		return 0, fmt.Errorf("sendMessage: telegram returned ok=false")
 	}
 	return result.Result.MessageID, nil
+}
+
+// SendMessageWithReplyKeyboard sends a text message with a persistent reply keyboard.
+func (c *Client) SendMessageWithReplyKeyboard(chatID int64, text string, keyboard *ReplyKeyboardMarkup) error {
+	payload := map[string]any{
+		"chat_id":      chatID,
+		"text":         text,
+		"parse_mode":   "HTML",
+		"reply_markup": keyboard,
+	}
+	return c.post("sendMessage", payload)
 }
 
 // EditMessage edits an existing message's text and keyboard.
@@ -176,6 +200,110 @@ func (c *Client) SendPhoto(chatID int64, imageData []byte, caption string) error
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+// SendDocument sends a file as a Telegram document using multipart/form-data.
+// Signature matches the filetransfer.TelegramBot interface.
+func (c *Client) SendDocument(chatID int64, data []byte, filename string) error {
+	url := fmt.Sprintf("%s%s/sendDocument", apiBase, c.token)
+
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+
+	_ = w.WriteField("chat_id", strconv.FormatInt(chatID, 10))
+	part, err := w.CreateFormFile("document", filename)
+	if err != nil {
+		return fmt.Errorf("sendDocument: create form file: %w", err)
+	}
+	if _, err := io.Copy(part, bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("sendDocument: copy file: %w", err)
+	}
+	w.Close()
+
+	resp, err := c.httpClient.Post(url, w.FormDataContentType(), &body)
+	if err != nil {
+		return fmt.Errorf("sendDocument request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("sendDocument decode failed: %w", err)
+	}
+	if !result.OK {
+		return fmt.Errorf("sendDocument: telegram returned ok=false")
+	}
+	return nil
+}
+
+// DownloadFile fetches a file from Telegram by file_id.
+// Returns raw bytes, the filename (last segment of file_path), and any error.
+func (c *Client) DownloadFile(fileID string) ([]byte, string, error) {
+	type tgFile struct {
+		FilePath string `json:"file_path"`
+	}
+	var resp struct {
+		OK     bool   `json:"ok"`
+		Result tgFile `json:"result"`
+	}
+
+	getURL := fmt.Sprintf("%s%s/getFile?file_id=%s", apiBase, c.token, fileID)
+	r, err := c.httpClient.Get(getURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("getFile request: %w", err)
+	}
+	defer r.Body.Close()
+
+	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
+		return nil, "", fmt.Errorf("getFile decode: %w", err)
+	}
+	if !resp.OK {
+		return nil, "", fmt.Errorf("getFile: Telegram returned ok=false")
+	}
+
+	fileURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", c.token, resp.Result.FilePath)
+	fr, err := c.httpClient.Get(fileURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("file download: %w", err)
+	}
+	defer fr.Body.Close()
+
+	data, err := io.ReadAll(fr.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("read file body: %w", err)
+	}
+
+	// Extract filename from the last path segment
+	fp := resp.Result.FilePath
+	filename := "downloaded_file"
+	for i := len(fp) - 1; i >= 0; i-- {
+		if fp[i] == '/' {
+			filename = fp[i+1:]
+			break
+		}
+	}
+
+	return data, filename, nil
+}
+
+// SendTyping sends the "typing..." chat action.
+func (c *Client) SendTyping(chatID int64) error {
+	payload := map[string]any{
+		"chat_id": chatID,
+		"action":  "typing",
+	}
+	return c.post("sendChatAction", payload)
+}
+
+// DeleteMessage deletes a message by ID.
+func (c *Client) DeleteMessage(chatID int64, messageID int) error {
+	payload := map[string]any{
+		"chat_id":    chatID,
+		"message_id": messageID,
+	}
+	return c.post("deleteMessage", payload)
 }
 
 // post encodes payload as JSON and calls the given Telegram method.

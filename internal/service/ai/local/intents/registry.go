@@ -5,7 +5,7 @@ package intents
 import (
 	"regexp"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
+	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
 )
 
 // Intent is a pattern that matches a user utterance and produces tool calls.

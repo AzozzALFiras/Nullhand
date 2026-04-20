@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	tgsvc "github.com/AzozzALFiras/nullhand/internal/service/telegram"
+	tgsvc "github.com/AzozzALFiras/Nullhand/internal/service/telegram"
 )
 
 const maxButtons = 20 // max items per page to avoid Telegram limits

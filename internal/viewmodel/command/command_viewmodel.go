@@ -5,16 +5,16 @@ import (
 	"strconv"
 	"strings"
 
-	cmdmodel "github.com/AzozzALFiras/nullhand/internal/model/command"
-	a11ysvc "github.com/AzozzALFiras/nullhand/internal/service/macos/accessibility"
-	appsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/apps"
-	filesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/files"
-	kbsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/keyboard"
-	mousesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/mouse"
-	screensvc "github.com/AzozzALFiras/nullhand/internal/service/macos/screen"
-	shellsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/shell"
-	systemsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/system"
-	tgfmt "github.com/AzozzALFiras/nullhand/internal/view/telegram"
+	cmdmodel "github.com/AzozzALFiras/Nullhand/internal/model/command"
+	a11ysvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/accessibility"
+	appsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/apps"
+	filesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/files"
+	kbsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/keyboard"
+	mousesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/mouse"
+	screensvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/screen"
+	shellsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/shell"
+	systemsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/system"
+	tgfmt "github.com/AzozzALFiras/Nullhand/internal/view/telegram"
 )
 
 // Result carries the outcome of executing a manual command.
@@ -152,6 +152,9 @@ func (vm *ViewModel) mouseAction(action string, args []string) Result {
 		err = mousesvc.Move(x, y)
 	}
 	if err != nil {
+		if action == "click" {
+			return Result{Text: fmt.Sprintf("❌ Could not click at %d,%d.", x, y)}
+		}
 		return Result{Text: tgfmt.Fail(err)}
 	}
 	return Result{Text: tgfmt.OK()}
@@ -173,7 +176,7 @@ func (vm *ViewModel) drag(args []string) Result {
 
 func (vm *ViewModel) scroll(args []string) Result {
 	if len(args) < 1 {
-		return Result{Text: "Usage: /scroll <up|down|left|right> [steps]"}
+		return Result{Text: "Usage: /scroll `up|down|left|right` [steps]"}
 	}
 	dir := args[0]
 	steps := 3
@@ -190,47 +193,47 @@ func (vm *ViewModel) scroll(args []string) Result {
 
 func (vm *ViewModel) typeText(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /type <text>"}
+		return Result{Text: "Usage: /type `text`"}
 	}
 	text := strings.Join(args, " ")
 	if err := kbsvc.Type(text); err != nil {
-		return Result{Text: tgfmt.Fail(err)}
+		return Result{Text: "❌ Could not type text. Is a window focused?"}
 	}
 	return Result{Text: tgfmt.OK()}
 }
 
 func (vm *ViewModel) pressKey(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /key <shortcut>  e.g. /key cmd+t"}
+		return Result{Text: "Usage: /key `shortcut`  e.g. /key cmd+t"}
 	}
 	if err := kbsvc.PressKey(args[0]); err != nil {
-		return Result{Text: tgfmt.Fail(err)}
+		return Result{Text: fmt.Sprintf("❌ Could not press key %s. Check key name.", args[0])}
 	}
 	return Result{Text: tgfmt.OK()}
 }
 
 func (vm *ViewModel) openApp(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /open <AppName>"}
+		return Result{Text: "Usage: /open `AppName`"}
 	}
 	appName := strings.Join(args, " ")
 	if err := appsvc.Open(appName); err != nil {
-		return Result{Text: tgfmt.Fail(err)}
+		return Result{Text: fmt.Sprintf("❌ Could not open %s. Is it installed?", appName)}
 	}
 	return Result{Text: tgfmt.OKWith(appName + " opened")}
 }
 
 func (vm *ViewModel) shell(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /shell <command>"}
+		return Result{Text: "Usage: /shell `command`"}
 	}
 	cmdLine := strings.Join(args, " ")
 	out, err := shellsvc.Run(cmdLine)
 	if err != nil {
 		if out != "" {
-			return Result{Text: tgfmt.Code(out) + "\n" + tgfmt.Fail(err)}
+			return Result{Text: "⚠️ Command exited with error:\n" + tgfmt.Code(out)}
 		}
-		return Result{Text: tgfmt.Fail(err)}
+		return Result{Text: "⚠️ Command exited with error:\n" + tgfmt.Fail(err)}
 	}
 	if out == "" {
 		return Result{Text: tgfmt.OK()}
@@ -240,7 +243,7 @@ func (vm *ViewModel) shell(args []string) Result {
 
 func (vm *ViewModel) readFile(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /read <path>"}
+		return Result{Text: "Usage: /read `path`"}
 	}
 	content, err := filesvc.Read(args[0])
 	if err != nil {
@@ -274,7 +277,7 @@ func (vm *ViewModel) getClipboard() Result {
 
 func (vm *ViewModel) setClipboard(args []string) Result {
 	if len(args) == 0 {
-		return Result{Text: "Usage: /copy <text>"}
+		return Result{Text: "Usage: /copy `text`"}
 	}
 	if err := filesvc.SetClipboard(strings.Join(args, " ")); err != nil {
 		return Result{Text: tgfmt.Fail(err)}

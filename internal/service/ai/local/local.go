@@ -2,8 +2,9 @@ package local
 
 import (
 	"context"
+	"strings"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
+	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
 )
 
 // fallbackHelp is returned when the parser cannot understand the request.
@@ -46,8 +47,16 @@ func (p *Provider) SetSessionContext(app, mode string) {
 // and returns either tool calls to execute or a final text reply.
 func (p *Provider) Chat(_ context.Context, history []aimodel.Message, _ []aimodel.ToolDefinition) (*aimodel.Response, error) {
 	// If the last message is a tool result, the agent already executed our
-	// tool calls — we just need to finish the task.
+	// tool calls. Surface any error from the last batch; otherwise say Done.
 	if len(history) > 0 && history[len(history)-1].Role == aimodel.RoleTool {
+		for i := len(history) - 1; i >= 0 && history[i].Role == aimodel.RoleTool; i-- {
+			for _, p := range history[i].Parts {
+				if p.Type == aimodel.ContentTypeText &&
+					(strings.HasPrefix(p.Text, "❌") || strings.HasPrefix(p.Text, "⚠️")) {
+					return &aimodel.Response{Text: p.Text, Done: true}, nil
+				}
+			}
+		}
 		return &aimodel.Response{Text: "Done.", Done: true}, nil
 	}
 

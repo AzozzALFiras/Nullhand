@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
+	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
 )
 
 // ToolCall builds an aimodel.ToolCall with a unique ID.

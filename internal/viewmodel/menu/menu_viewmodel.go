@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	tgsvc "github.com/AzozzALFiras/nullhand/internal/service/telegram"
+	tgsvc "github.com/AzozzALFiras/Nullhand/internal/service/telegram"
 )
 
 const menuTimeout = 5 * time.Minute

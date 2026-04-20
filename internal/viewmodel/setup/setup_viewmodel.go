@@ -3,10 +3,10 @@ package setup
 import (
 	"fmt"
 
-	configmodel "github.com/AzozzALFiras/nullhand/internal/model/config"
-	configrepo "github.com/AzozzALFiras/nullhand/internal/repository/config"
-	tgsvc "github.com/AzozzALFiras/nullhand/internal/service/telegram"
-	wizview "github.com/AzozzALFiras/nullhand/internal/view/setup"
+	configmodel "github.com/AzozzALFiras/Nullhand/internal/model/config"
+	configrepo "github.com/AzozzALFiras/Nullhand/internal/repository/config"
+	tgsvc "github.com/AzozzALFiras/Nullhand/internal/service/telegram"
+	wizview "github.com/AzozzALFiras/Nullhand/internal/view/setup"
 )
 
 // ViewModel orchestrates the first-run setup wizard.

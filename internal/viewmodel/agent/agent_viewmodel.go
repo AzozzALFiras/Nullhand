@@ -2,24 +2,14 @@ package agent
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
-	aisvc "github.com/AzozzALFiras/nullhand/internal/service/ai"
-	a11ysvc "github.com/AzozzALFiras/nullhand/internal/service/macos/accessibility"
-	appsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/apps"
-	filesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/files"
-	kbsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/keyboard"
-	mousesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/mouse"
-	palettesvc "github.com/AzozzALFiras/nullhand/internal/service/macos/palette"
-	screensvc "github.com/AzozzALFiras/nullhand/internal/service/macos/screen"
-	shellsvc "github.com/AzozzALFiras/nullhand/internal/service/macos/shell"
-	recipesvc "github.com/AzozzALFiras/nullhand/internal/service/recipe"
+	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
+	aisvc "github.com/AzozzALFiras/Nullhand/internal/service/ai"
+	recipesvc "github.com/AzozzALFiras/Nullhand/internal/service/recipe"
 )
 
 const maxSteps = 30
@@ -91,7 +81,7 @@ func New(provider aisvc.Provider, recipes *recipesvc.Service) *ViewModel {
 func (vm *ViewModel) buildSystemPrompt() string {
 	var sb strings.Builder
 
-	sb.WriteString(`You are Nullhand, an AI agent that controls a macOS computer.
+	sb.WriteString(`You are Nullhand, an AI agent that controls a desktop computer.
 Complete tasks in the FEWEST tool calls possible.
 
 `)
@@ -142,22 +132,22 @@ Sudo flow (when a command needs password):
 To read Terminal output: use analyze_screenshot (vision) or take_screenshot.
 
 ## Browser Control
-- Open URL: run_recipe("browser_open_url", {"browser":"Safari","url":"https://..."})
-- Google search: run_recipe("browser_google_search", {"browser":"Safari","query":"..."})
-- New/close tab: run_recipe("browser_new_tab/browser_close_tab", {"browser":"Safari"})
-- Find in page: run_recipe("browser_find_in_page", {"browser":"Safari","text":"..."})
+- Open URL: run_recipe("browser_open_url", {"browser":"Firefox","url":"https://..."})
+- Google search: run_recipe("browser_google_search", {"browser":"Firefox","query":"..."})
+- New/close tab: run_recipe("browser_new_tab/browser_close_tab", {"browser":"Firefox"})
+- Find in page: run_recipe("browser_find_in_page", {"browser":"Firefox","text":"..."})
 - Navigate tabs: browser_next_tab, browser_prev_tab
 - Back/forward: browser_back, browser_forward
 - Reload: browser_reload
 - Click links/buttons: use analyze_screenshot to see the page, then click(x, y)
-- Default browser for URL bar: "Safari". For Chrome use "Google Chrome".
+- Default browser: "Firefox". For Chrome use "Google Chrome".
 
 ## VS Code / IDE Control
 - Open terminal: run_recipe("vscode_open_terminal")
 - Run command in terminal: run_recipe("vscode_terminal_run", {"command":"npm start"})
 - Claude chat: run_recipe("vscode_type_in_claude", {"message":"..."})
 - New Claude chat: run_recipe("vscode_new_claude_chat")
-- Command palette: focus_via_palette("cmd+shift+p", "command name")
+- Command palette: focus_via_palette("ctrl+shift+p", "command name")
 
 ## The canonical flow for "type X in app Y and send it"
 1. Check if a recipe exists (list_recipes → run_recipe)
@@ -166,14 +156,14 @@ To read Terminal output: use analyze_screenshot (vision) or take_screenshot.
 
 ## App name tips
 - VS Code → "Visual Studio Code", Chrome → "Google Chrome"
-- WhatsApp, Slack, Safari, Messages, Terminal → use as-is
+- Firefox, Slack, Terminal → use as-is
 
 ## Common shortcuts (for press_key)
 - return/enter → submit, escape → cancel
-- cmd+l → browser URL bar, cmd+f → find in page
-- cmd+t/cmd+w → new/close tab, ctrl+tab → next tab
+- ctrl+l → browser URL bar, ctrl+f → find in page
+- ctrl+t/ctrl+w → new/close tab, ctrl+tab → next tab
 - ctrl+c → cancel command, ctrl+d → EOF, ctrl+z → suspend
-- cmd+k → clear terminal, cmd+r → reload page
+- ctrl+shift+k → clear terminal, ctrl+r → reload page
 
 ## Rules
 - Do ONLY what the user asked. Nothing more.
@@ -253,305 +243,10 @@ func (vm *ViewModel) Run(ctx context.Context, task string, progress ProgressFunc
 	return "", fmt.Errorf("agent: exceeded maximum steps (%d)", maxSteps)
 }
 
-// executeTool calls the appropriate macOS service based on tool name.
-// Returns (message parts, error). Most tools return text-only parts.
-// analyze_screenshot returns text + image parts so the AI can see the screen.
-// take_screenshot delivers the image to the user via sendPhoto — the AI
-// receives only a text confirmation.
-func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]aimodel.MessagePart, error) {
-	args := tc.Arguments
-
-	switch tc.ToolName {
-	case "take_screenshot":
-		if sendPhoto == nil {
-			return textParts("error: screenshot delivery not available"), fmt.Errorf("sendPhoto is nil")
-		}
-		data, err := screensvc.Capture()
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		if err := sendPhoto(data, "📸"); err != nil {
-			data = nil
-			return textParts(fmt.Sprintf("error delivering screenshot: %v", err)), err
-		}
-		data = nil
-		return textParts("screenshot delivered to user (AI cannot see it)"), nil
-
-	case "analyze_screenshot":
-		data, err := screensvc.CaptureResized(0) // 0 = use logical resolution
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		w, h, _ := screensvc.Size()
-		encoded := base64.StdEncoding.EncodeToString(data)
-		data = nil
-		return []aimodel.MessagePart{
-			{Type: aimodel.ContentTypeText, Text: fmt.Sprintf("Screenshot captured (%dx%d). Pixel coordinates in this image map directly to click/move coordinates — no conversion needed.", w, h)},
-			{Type: aimodel.ContentTypeImage, ImageBase64: encoded, MimeType: "image/png"},
-		}, nil
-
-	case "open_app":
-		app := args["app_name"]
-		if err := appsvc.Open(app); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("opened %s", app)), nil
-
-	case "click":
-		x, y, err := parseXY(args)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		if err := mousesvc.Click(x, y); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("clicked at %d,%d", x, y)), nil
-
-	case "click_ui_element":
-		app := args["app_name"]
-		label := args["label"]
-		if err := a11ysvc.Click(app, label); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("clicked %q in %s", label, app)), nil
-
-	case "focus_text_field":
-		app := args["app_name"]
-		label := args["label"]
-		if err := a11ysvc.FocusField(app, label); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("focused text field %q in %s", label, app)), nil
-
-	case "focus_via_palette":
-		shortcut := args["palette_shortcut"]
-		command := args["command_name"]
-		if err := palettesvc.Run(shortcut, command); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("invoked palette command %q", command)), nil
-
-	case "list_ui_elements":
-		depth := 8
-		if d := args["max_depth"]; d != "" {
-			_, _ = fmt.Sscanf(d, "%d", &depth)
-		}
-		tree, err := a11ysvc.ListElements(depth)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(tree), nil
-
-	case "is_native_app":
-		app := args["app_name"]
-		if appsvc.IsNativeAX(app) {
-			return textParts("native (focus_text_field will work)"), nil
-		}
-		return textParts("electron or unknown (use focus_via_palette or run_recipe)"), nil
-
-	case "list_recipes":
-		if vm.recipes == nil {
-			return textParts("no recipes available"), nil
-		}
-		var sb strings.Builder
-		for _, r := range vm.recipes.List() {
-			sb.WriteString(r.Name)
-			if r.Description != "" {
-				sb.WriteString(" — ")
-				sb.WriteString(r.Description)
-			}
-			if len(r.Parameters) > 0 {
-				sb.WriteString(" [params: ")
-				sb.WriteString(strings.Join(r.Parameters, ", "))
-				sb.WriteString("]")
-			}
-			sb.WriteString("\n")
-		}
-		return textParts(strings.TrimRight(sb.String(), "\n")), nil
-
-	case "run_recipe":
-		if vm.recipes == nil {
-			return textParts("error: recipe service not available"), fmt.Errorf("recipes disabled")
-		}
-		name := args["name"]
-		params := map[string]string{}
-		if raw := args["params_json"]; raw != "" {
-			if err := json.Unmarshal([]byte(raw), &params); err != nil {
-				return textParts(fmt.Sprintf("error: bad params_json: %v", err)), err
-			}
-		}
-		dryRun := args["dry_run"] == "true"
-		plan, err := vm.recipes.Run(name, params, dryRun)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v\n%s", err, plan)), err
-		}
-		if dryRun {
-			return textParts(fmt.Sprintf("dry-run ok:\n%s", plan)), nil
-		}
-		return textParts(fmt.Sprintf("recipe %q ok:\n%s", name, plan)), nil
-
-	case "right_click":
-		x, y, err := parseXY(args)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		if err := mousesvc.RightClick(x, y); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("right-clicked at %d,%d", x, y)), nil
-
-	case "double_click":
-		x, y, err := parseXY(args)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		if err := mousesvc.DoubleClick(x, y); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("double-clicked at %d,%d", x, y)), nil
-
-	case "move_mouse":
-		x, y, err := parseXY(args)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		if err := mousesvc.Move(x, y); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("moved mouse to %d,%d", x, y)), nil
-
-	case "scroll":
-		direction := args["direction"]
-		steps := 3
-		if s := args["steps"]; s != "" {
-			fmt.Sscanf(s, "%d", &steps)
-		}
-		if steps < 1 {
-			steps = 1
-		}
-		if err := mousesvc.Scroll(direction, steps); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("scrolled %s %d steps", direction, steps)), nil
-
-	case "drag":
-		var x1, y1, x2, y2 int
-		fmt.Sscanf(args["x1"], "%d", &x1)
-		fmt.Sscanf(args["y1"], "%d", &y1)
-		fmt.Sscanf(args["x2"], "%d", &x2)
-		fmt.Sscanf(args["y2"], "%d", &y2)
-		if err := mousesvc.Drag(x1, y1, x2, y2); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("dragged from %d,%d to %d,%d", x1, y1, x2, y2)), nil
-
-	case "type_text":
-		text := args["text"]
-		if err := kbsvc.Type(text); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts("typed text"), nil
-
-	case "verify_clipboard":
-		got := kbsvc.ReadClipboard()
-		return textParts(got), nil
-
-	case "restore_clipboard":
-		if vm.hadSavedClipboard {
-			kbsvc.RestoreClipboard(vm.savedClipboard)
-			vm.savedClipboard = ""
-			vm.hadSavedClipboard = false
-			return textParts("clipboard restored"), nil
-		}
-		return textParts("nothing to restore"), nil
-
-	case "request_manual_focus":
-		if vm.manualFocus == nil {
-			return textParts("error: manual focus not available in this context"), fmt.Errorf("no manualFocus callback")
-		}
-		reason := args["reason"]
-		if reason == "" {
-			reason = "I could not locate the target input automatically."
-		}
-		reply, err := vm.manualFocus(reason)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("user replied: %s", reply)), nil
-
-	case "press_key":
-		key := args["key"]
-		if err := kbsvc.PressKey(key); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(fmt.Sprintf("pressed %s", key)), nil
-
-	case "run_shell":
-		cmd := args["command"]
-		out, err := shellsvc.Run(cmd)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v\n%s", err, out)), err
-		}
-		return textParts(out), nil
-
-	case "read_file":
-		path := args["path"]
-		content, err := filesvc.Read(path)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(content), nil
-
-	case "list_directory":
-		path := args["path"]
-		if path == "" {
-			path = "."
-		}
-		entries, err := filesvc.List(path)
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(strings.Join(entries, "\n")), nil
-
-	case "get_clipboard":
-		text, err := filesvc.GetClipboard()
-		if err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts(text), nil
-
-	case "set_clipboard":
-		text := args["text"]
-		if err := filesvc.SetClipboard(text); err != nil {
-			return textParts(fmt.Sprintf("error: %v", err)), err
-		}
-		return textParts("clipboard set"), nil
-
-	case "browse_folder":
-		path := args["path"]
-		if path == "" {
-			path = "~"
-		}
-		if vm.browse != nil {
-			vm.browse(path)
-		}
-		return textParts(fmt.Sprintf("opened file browser at %s", path)), nil
-
-	case "wait":
-		var ms int
-		fmt.Sscanf(args["ms"], "%d", &ms)
-		if ms > 5000 {
-			ms = 5000
-		}
-		if ms < 0 {
-			ms = 0
-		}
-		time.Sleep(time.Duration(ms) * time.Millisecond)
-		return textParts(fmt.Sprintf("waited %dms", ms)), nil
-
-	default:
-		return textParts(fmt.Sprintf("unknown tool: %s", tc.ToolName)), nil
-	}
+// jsonUnmarshal is a thin wrapper so platform tool files can call it without
+// importing encoding/json directly alongside their other imports.
+func jsonUnmarshal(data []byte, v interface{}) error {
+	return json.Unmarshal(data, v)
 }
 
 // buildToolDefinitions returns the list of tools exposed to the AI.
@@ -565,9 +260,16 @@ func (vm *ViewModel) buildToolDefinitions() []aimodel.ToolDefinition {
 		},
 		{
 			Name:        "open_app",
-			Description: "Launch and focus a macOS application by name.",
+			Description: "Launch and focus an application by name.",
 			Parameters: []aimodel.ToolParameter{
-				{Name: "app_name", Type: "string", Description: "Application display name, e.g. Safari, Visual Studio Code", Required: true},
+				{Name: "app_name", Type: "string", Description: "Application display name, e.g. Firefox, Visual Studio Code", Required: true},
+			},
+		},
+		{
+			Name:        "close_app",
+			Description: "Close or kill an application by name. Sends a graceful close first, then force-kills if needed.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "app_name", Type: "string", Description: "Application display name, e.g. Firefox, Visual Studio Code", Required: true},
 			},
 		},
 		{

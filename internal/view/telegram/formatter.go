@@ -6,19 +6,19 @@ import (
 )
 
 // OK returns a simple success reply.
-func OK() string { return "✓" }
+func OK() string { return "✅" }
 
 // OKWith returns a success reply with a message.
-func OKWith(msg string) string { return "✓ " + msg }
+func OKWith(msg string) string { return "✅ " + msg }
 
 // Fail formats an error reply.
 func Fail(err error) string {
-	return "✗ " + escapeHTML(err.Error())
+	return "❌ " + escapeHTML(err.Error())
 }
 
 // FailWith formats an error reply with context label.
 func FailWith(label string, err error) string {
-	return fmt.Sprintf("✗ <b>%s</b>: %s", escapeHTML(label), escapeHTML(err.Error()))
+	return fmt.Sprintf("❌ <b>%s</b>: %s", escapeHTML(label), escapeHTML(err.Error()))
 }
 
 // Code wraps text in an HTML code block for Telegram.
@@ -53,7 +53,7 @@ func Progress(step, message string) string {
 // with parse_mode=HTML.
 func AgentDone(result string) string {
 	if result == "" {
-		return "✓ Done."
+		return "✅ Done."
 	}
 	return escapeHTML(result)
 }
@@ -70,7 +70,7 @@ func Confirm(description string) string {
 func Help() string {
 	return `<b>👋 Welcome to Nullhand</b>
 
-Your invisible hand on the Mac.
+Your invisible hand on the Linux machine.
 
 <b>Two ways to control your machine:</b>
 
@@ -97,7 +97,7 @@ Just type a task in plain English or Arabic. Example:
 /stop — cancel current AI task
 /help — show this message
 
-Tip: use /screenshot often — it is your eyes on the Mac.`
+Tip: use /screenshot often — it is your eyes on the Linux machine.`
 }
 
 // StatusReport formats a system status reply.

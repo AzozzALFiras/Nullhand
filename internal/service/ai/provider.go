@@ -3,7 +3,7 @@ package ai
 import (
 	"context"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
+	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
 )
 
 // Provider is the common interface all AI backends must implement.

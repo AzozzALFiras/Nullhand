@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	aimodel "github.com/AzozzALFiras/nullhand/internal/model/ai"
+	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
 )
 
 func TestParser(t *testing.T) {
