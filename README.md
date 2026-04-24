@@ -12,7 +12,7 @@ It ships with an OTP session gate, a structured audit log, a built-in scheduler,
 
 ---
 
-## 🚀 Looking for a Server Edition? Meet AXGhost
+## 🚀 Looking for a Server Edition? Meet AXGhost For Your Servers
 
 While **Nullhand** is your ultimate command center for desktop, we've built a specialized, enterprise-grade tool specifically for servers.
 
