@@ -37,7 +37,7 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 			return textParts(fmt.Sprintf("error delivering screenshot: %v", err)), err
 		}
 		data = nil
-		return textParts("screenshot delivered to user (AI cannot see it)"), nil
+		return textParts("screenshot captured and sent to Telegram"), nil
 
 	case "analyze_screenshot":
 		data, err := screensvc.CaptureResized(0)
