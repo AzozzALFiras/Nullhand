@@ -446,6 +446,58 @@ func (vm *ViewModel) buildToolDefinitions() []aimodel.ToolDefinition {
 				{Name: "ms", Type: "string", Description: "Milliseconds to wait (max 5000)", Required: true},
 			},
 		},
+		// --- Verification & polling primitives ---
+		{
+			Name: "wait_for_window",
+			Description: "Poll until a window whose title contains 'title' becomes active or appears. " +
+				"Use after open_app to make sure the app is ready before sending input.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "title", Type: "string", Description: "Substring to match in window title (case-insensitive)", Required: true},
+				{Name: "timeout_ms", Type: "string", Description: "Max time to wait in milliseconds (default 5000)", Required: false},
+			},
+		},
+		{
+			Name: "wait_for_text",
+			Description: "Poll the screen with OCR until the given text appears, or timeout expires. " +
+				"Returns the bounding box on success. Use to confirm a UI label rendered before clicking.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "text", Type: "string", Description: "Text to wait for (substring, case-insensitive)", Required: true},
+				{Name: "timeout_ms", Type: "string", Description: "Max time to wait in milliseconds (default 5000)", Required: false},
+			},
+		},
+		{
+			Name: "wait_for_element",
+			Description: "Poll AT-SPI until an element matching label exists in the frontmost app, " +
+				"or timeout expires. Substring match on element name or description.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "app_name", Type: "string", Description: "App name (informational, may be empty)", Required: false},
+				{Name: "label", Type: "string", Description: "Element name/description (substring, case-insensitive)", Required: true},
+				{Name: "timeout_ms", Type: "string", Description: "Max time to wait in milliseconds (default 5000)", Required: false},
+			},
+		},
+		{
+			Name: "click_text",
+			Description: "Find a text region on screen via OCR and click its center. " +
+				"Use this for elements that AT-SPI can't see (Electron apps like WhatsApp, " +
+				"Slack, VS Code) when you know the visible label of the target.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "text", Type: "string", Description: "Visible text to locate and click", Required: true},
+			},
+		},
+		{
+			Name: "click_ui_element_fuzzy",
+			Description: "Like click_ui_element but matches the label as a case-insensitive " +
+				"substring of element name OR description. Falls back to OCR-based click_text " +
+				"automatically if AT-SPI cannot find the element.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "app_name", Type: "string", Description: "App name (informational)", Required: false},
+				{Name: "label", Type: "string", Description: "Element label (substring, case-insensitive)", Required: true},
+			},
+		},
+		{
+			Name:        "clear_field",
+			Description: "Select all (Ctrl+A) and delete contents of the currently focused text field. Useful before typing a URL into the address bar.",
+		},
 	}
 
 	// Vision tool — only available when the AI provider supports images.
@@ -495,6 +547,22 @@ func parseXY(args map[string]string) (int, int, error) {
 		return 0, 0, fmt.Errorf("invalid y: %v", err)
 	}
 	return x, y, nil
+}
+
+// parseTimeoutMs parses a timeout argument with a default. Caps at 60s to avoid
+// runaway polling loops.
+func parseTimeoutMs(raw string, fallback int) int {
+	if raw == "" {
+		return fallback
+	}
+	var ms int
+	if _, err := fmt.Sscanf(raw, "%d", &ms); err != nil || ms <= 0 {
+		return fallback
+	}
+	if ms > 60000 {
+		ms = 60000
+	}
+	return ms
 }
 
 func truncate(s string, n int) string {

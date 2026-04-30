@@ -12,21 +12,29 @@ import (
 
 // Intent types returned by the classifier.
 const (
-	IntentAppFeature = "app_feature"  // open terminal OF vs code
-	IntentAppCommand = "app_command"  // open terminal and run ls
-	IntentMessaging  = "messaging"    // whatsapp Azozz say hello
-	IntentBrowserNav = "browser_nav"  // open safari and go to X
-	IntentFileBrowse = "file_browse"  // browse documents
-	IntentGitAction  = "git_action"   // git push in vs code
-	IntentOpenApp    = "open_app"     // open safari
-	IntentSimple     = "simple"       // screenshot, send, press key
+	IntentAppFeature       = "app_feature"        // open terminal OF vs code
+	IntentAppCommand       = "app_command"        // open terminal and run ls
+	IntentMessaging        = "messaging"          // whatsapp Azozz say hello
+	IntentBrowserNav       = "browser_nav"        // open firefox and go to X
+	IntentBrowserAction    = "browser_action"     // back / forward / refresh / new tab / close tab
+	IntentFileBrowse       = "file_browse"        // browse documents
+	IntentGitAction        = "git_action"         // git push in vs code
+	IntentOpenApp          = "open_app"           // open firefox
+	IntentClickButton      = "click_button"       // اضغط زر إرسال / click send button
+	IntentSettingsSearch   = "settings_search"    // ابحث في الإعدادات عن WiFi
+	IntentSettingsPanel    = "settings_panel"     // افتح إعدادات WiFi
+	IntentSimple           = "simple"             // screenshot, send, press key
 )
+
+// defaultBrowser is the browser used when no browser is specified.
+// Linux: Firefox is the most common default browser.
+const defaultBrowser = "Firefox"
 
 // ClassifiedIntent is the result of classification.
 type ClassifiedIntent struct {
 	Type    string
 	App     string // primary app
-	Feature string // sub-feature (terminal, claude, search...)
+	Feature string // sub-feature (terminal, claude, search, back, forward, refresh, new_tab, close_tab)
 	Command string // command to run
 	Message string // message to send
 	Contact string // contact name
@@ -34,6 +42,7 @@ type ClassifiedIntent struct {
 	Query   string // search query
 	Path    string // file/directory path
 	GitOp   string // git operation (push, pull, commit...)
+	Label   string // UI element label (button text, settings panel name)
 }
 
 // SessionContext is a minimal context passed from the session manager.
@@ -115,6 +124,63 @@ func ClassifyWithContext(e *Entities, ctx *SessionContext) *ClassifiedIntent {
 		}
 	}
 
+	// ── Priority 3.5: Settings search ────────────────────────────────
+	// "ابحث في الإعدادات عن WiFi" / "search settings for X"
+	if len(e.Apps) > 0 && e.PrimaryApp() == "System Settings" && e.HasAction("search") {
+		ci.Type = IntentSettingsSearch
+		ci.Query = e.TextAfterApps()
+		return ci
+	}
+
+	// "افتح إعدادات WiFi" / "open WiFi settings"
+	if len(e.Apps) > 0 && e.PrimaryApp() == "System Settings" && e.HasAction("open") {
+		remaining := e.TextAfterApps()
+		if remaining != "" {
+			ci.Type = IntentSettingsPanel
+			ci.Label = remaining
+			return ci
+		}
+	}
+
+	// ── Priority 3.6: Click button ───────────────────────────────────
+	// "اضغط زر إرسال" / "click send button" — when "button" is mentioned
+	// or the user explicitly says click without coordinates.
+	if e.HasButton && (e.HasAction("click") || e.HasAction("open") || e.HasAction("send")) {
+		label := e.TextAfterApps()
+		if label != "" {
+			ci.Type = IntentClickButton
+			ci.Label = label
+			ci.App = e.PrimaryApp() // may be empty
+			return ci
+		}
+	}
+
+	// ── Priority 3.7: Browser action (back/forward/refresh/close) ────
+	if len(e.Apps) > 0 && IsBrowserApp(e.PrimaryApp()) {
+		switch {
+		case e.HasAction("back"):
+			ci.Type = IntentBrowserAction
+			ci.App = e.PrimaryApp()
+			ci.Feature = "back"
+			return ci
+		case e.HasAction("forward"):
+			ci.Type = IntentBrowserAction
+			ci.App = e.PrimaryApp()
+			ci.Feature = "forward"
+			return ci
+		case e.HasAction("refresh"):
+			ci.Type = IntentBrowserAction
+			ci.App = e.PrimaryApp()
+			ci.Feature = "refresh"
+			return ci
+		case e.HasAction("close"):
+			ci.Type = IntentBrowserAction
+			ci.App = e.PrimaryApp()
+			ci.Feature = "close_tab"
+			return ci
+		}
+	}
+
 	// ── Priority 4: Messaging ────────────────────────────────────────
 	if len(e.Apps) > 0 && IsMessaging(e.PrimaryApp()) && e.HasAction("send") {
 		ci.Type = IntentMessaging
@@ -146,11 +212,20 @@ func ClassifyWithContext(e *Entities, ctx *SessionContext) *ClassifiedIntent {
 	// Direct search without browser specified
 	if e.HasAction("search") && len(e.Apps) == 0 {
 		ci.Type = IntentBrowserNav
-		ci.App = "Safari"
+		ci.App = defaultBrowser
 		ci.Query = e.TextAfterApps()
 		if ci.Query != "" {
 			return ci
 		}
+	}
+
+	// Direct URL navigation without browser specified
+	// "go to X.com" / "اذهب إلى X.com" / "روح لـ X.com"
+	if (e.HasAction("navigate") || e.HasAction("open")) && len(e.URLs) > 0 && len(e.Apps) == 0 {
+		ci.Type = IntentBrowserNav
+		ci.App = defaultBrowser
+		ci.URL = e.URLs[0]
+		return ci
 	}
 
 	// ── Priority 6: File Browse ──────────────────────────────────────
@@ -320,6 +395,9 @@ func BuildToolCalls(ci *ClassifiedIntent) []aimodel.ToolCall {
 	case IntentBrowserNav:
 		return buildBrowserCalls(ci)
 
+	case IntentBrowserAction:
+		return buildBrowserActionCalls(ci)
+
 	case IntentFileBrowse:
 		path := ci.Path
 		if path == "" {
@@ -333,9 +411,53 @@ func BuildToolCalls(ci *ClassifiedIntent) []aimodel.ToolCall {
 	case IntentOpenApp:
 		return []aimodel.ToolCall{intents.ToolCall("open_app", map[string]string{"app_name": ci.App})}
 
+	case IntentClickButton:
+		return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
+			"name":        "click_button",
+			"params_json": intents.MustJSON(map[string]string{"label": ci.Label}),
+		})}
+
+	case IntentSettingsSearch:
+		return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
+			"name":        "settings_search",
+			"params_json": intents.MustJSON(map[string]string{"query": ci.Query}),
+		})}
+
+	case IntentSettingsPanel:
+		return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
+			"name":        "settings_open_panel",
+			"params_json": intents.MustJSON(map[string]string{"panel": ci.Label}),
+		})}
+
 	default:
 		return nil
 	}
+}
+
+func buildBrowserActionCalls(ci *ClassifiedIntent) []aimodel.ToolCall {
+	browser := ci.App
+	if browser == "" {
+		browser = defaultBrowser
+	}
+	var recipeName string
+	switch ci.Feature {
+	case "back":
+		recipeName = "browser_back"
+	case "forward":
+		recipeName = "browser_forward"
+	case "refresh":
+		recipeName = "browser_reload"
+	case "new_tab":
+		recipeName = "browser_new_tab"
+	case "close_tab":
+		recipeName = "browser_close_tab"
+	default:
+		return []aimodel.ToolCall{intents.ToolCall("open_app", map[string]string{"app_name": browser})}
+	}
+	return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
+		"name":        recipeName,
+		"params_json": intents.MustJSON(map[string]string{"browser": browser}),
+	})}
 }
 
 func buildAppFeatureCalls(ci *ClassifiedIntent) []aimodel.ToolCall {
@@ -385,19 +507,23 @@ func buildMessagingCalls(ci *ClassifiedIntent) []aimodel.ToolCall {
 }
 
 func buildBrowserCalls(ci *ClassifiedIntent) []aimodel.ToolCall {
+	browser := ci.App
+	if browser == "" {
+		browser = defaultBrowser
+	}
 	if ci.URL != "" {
 		return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
 			"name":        "browser_open_url",
-			"params_json": intents.MustJSON(map[string]string{"browser": ci.App, "url": ci.URL}),
+			"params_json": intents.MustJSON(map[string]string{"browser": browser, "url": ci.URL}),
 		})}
 	}
 	if ci.Query != "" {
 		return []aimodel.ToolCall{intents.ToolCall("run_recipe", map[string]string{
 			"name":        "browser_google_search",
-			"params_json": intents.MustJSON(map[string]string{"browser": ci.App, "query": ci.Query}),
+			"params_json": intents.MustJSON(map[string]string{"browser": browser, "query": ci.Query}),
 		})}
 	}
-	return []aimodel.ToolCall{intents.ToolCall("open_app", map[string]string{"app_name": ci.App})}
+	return []aimodel.ToolCall{intents.ToolCall("open_app", map[string]string{"app_name": browser})}
 }
 
 func buildGitCalls(ci *ClassifiedIntent) []aimodel.ToolCall {

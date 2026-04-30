@@ -58,16 +58,18 @@ func Defaults() map[string]recipemodel.Recipe {
 			},
 		},
 		"whatsapp_new_message": {
-			Description: "Start a new WhatsApp chat (param: contact)",
+			Description: "Open WhatsApp and select a contact in a new chat (param: contact)",
 			Parameters:  []string{"contact"},
 			Steps: []recipemodel.Step{
 				{Kind: recipemodel.StepOpenApp, AppName: "WhatsApp"},
-				{Kind: recipemodel.StepPressKey, Key: "cmd+n"},
-				{Kind: recipemodel.StepSleepMs, Ms: 300},
+				{Kind: recipemodel.StepWaitForWindow, Text: "WhatsApp", Ms: 6000},
+				{Kind: recipemodel.StepSleepMs, Ms: 400},
+				{Kind: recipemodel.StepPressKey, Key: "ctrl+n"},
+				{Kind: recipemodel.StepSleepMs, Ms: 600},
 				{Kind: recipemodel.StepTypeText, Text: "{{contact}}"},
-				{Kind: recipemodel.StepSleepMs, Ms: 200},
-				{Kind: recipemodel.StepPressKey, Key: "return"},
-				{Kind: recipemodel.StepSleepMs, Ms: 300},
+				{Kind: recipemodel.StepSleepMs, Ms: 900},
+				{Kind: recipemodel.StepClickText, Text: "{{contact}}"},
+				{Kind: recipemodel.StepSleepMs, Ms: 400},
 			},
 		},
 		"messages_new_imessage": {
@@ -137,18 +139,24 @@ func Defaults() map[string]recipemodel.Recipe {
 			},
 		},
 		"whatsapp_send_message": {
-			Description: "Open a WhatsApp chat and send a message (params: contact, message)",
+			Description: "Open WhatsApp, search for a contact, select first result, type and send a message (params: contact, message)",
 			Parameters:  []string{"contact", "message"},
 			Steps: []recipemodel.Step{
 				{Kind: recipemodel.StepOpenApp, AppName: "WhatsApp"},
-				{Kind: recipemodel.StepPressKey, Key: "cmd+n"},
-				{Kind: recipemodel.StepSleepMs, Ms: 300},
-				{Kind: recipemodel.StepTypeText, Text: "{{contact}}"},
-				{Kind: recipemodel.StepSleepMs, Ms: 300},
-				{Kind: recipemodel.StepPressKey, Key: "return"},
+				{Kind: recipemodel.StepWaitForWindow, Text: "WhatsApp", Ms: 6000},
 				{Kind: recipemodel.StepSleepMs, Ms: 400},
+				{Kind: recipemodel.StepPressKey, Key: "ctrl+n"},
+				{Kind: recipemodel.StepSleepMs, Ms: 600},
+				// Type contact in the new-chat search box.
+				{Kind: recipemodel.StepTypeText, Text: "{{contact}}"},
+				{Kind: recipemodel.StepSleepMs, Ms: 900},
+				// Click the first matching contact via OCR — needed because Electron
+				// WhatsApp doesn't expose chat list items via AT-SPI, and pressing
+				// Return often goes to a wrong contact.
+				{Kind: recipemodel.StepClickText, Text: "{{contact}}"},
+				{Kind: recipemodel.StepSleepMs, Ms: 700},
 				{Kind: recipemodel.StepTypeText, Text: "{{message}}"},
-				{Kind: recipemodel.StepSleepMs, Ms: 200},
+				{Kind: recipemodel.StepSleepMs, Ms: 300},
 				{Kind: recipemodel.StepPressKey, Key: "return"},
 			},
 		},
@@ -265,26 +273,30 @@ func Defaults() map[string]recipemodel.Recipe {
 
 		// ── Browser recipes ──────────────────────────────────────────────
 		"browser_open_url": {
-			Description: "Open a URL in a browser (params: browser, url)",
+			Description: "Open a URL in a browser, waiting for window and clearing the address bar first (params: browser, url)",
 			Parameters:  []string{"browser", "url"},
 			Steps: []recipemodel.Step{
 				{Kind: recipemodel.StepOpenApp, AppName: "{{browser}}"},
+				{Kind: recipemodel.StepWaitForWindow, Text: "{{browser}}", Ms: 6000},
 				{Kind: recipemodel.StepSleepMs, Ms: 300},
-				{Kind: recipemodel.StepPressKey, Key: "cmd+l"},
-				{Kind: recipemodel.StepSleepMs, Ms: 200},
+				{Kind: recipemodel.StepPressKey, Key: "ctrl+l"},
+				{Kind: recipemodel.StepSleepMs, Ms: 250},
+				{Kind: recipemodel.StepClearField},
 				{Kind: recipemodel.StepTypeText, Text: "{{url}}"},
 				{Kind: recipemodel.StepSleepMs, Ms: 150},
 				{Kind: recipemodel.StepPressKey, Key: "return"},
 			},
 		},
 		"browser_google_search": {
-			Description: "Search Google in a browser (params: browser, query)",
+			Description: "Search Google in a browser, waiting for window and clearing the address bar first (params: browser, query)",
 			Parameters:  []string{"browser", "query"},
 			Steps: []recipemodel.Step{
 				{Kind: recipemodel.StepOpenApp, AppName: "{{browser}}"},
+				{Kind: recipemodel.StepWaitForWindow, Text: "{{browser}}", Ms: 6000},
 				{Kind: recipemodel.StepSleepMs, Ms: 300},
-				{Kind: recipemodel.StepPressKey, Key: "cmd+l"},
-				{Kind: recipemodel.StepSleepMs, Ms: 200},
+				{Kind: recipemodel.StepPressKey, Key: "ctrl+l"},
+				{Kind: recipemodel.StepSleepMs, Ms: 250},
+				{Kind: recipemodel.StepClearField},
 				{Kind: recipemodel.StepTypeText, Text: "{{query}}"},
 				{Kind: recipemodel.StepSleepMs, Ms: 150},
 				{Kind: recipemodel.StepPressKey, Key: "return"},
@@ -354,6 +366,80 @@ func Defaults() map[string]recipemodel.Recipe {
 			Steps: []recipemodel.Step{
 				{Kind: recipemodel.StepOpenApp, AppName: "{{browser}}"},
 				{Kind: recipemodel.StepPressKey, Key: "cmd+r"},
+			},
+		},
+		"browser_new_tab_and_search": {
+			Description: "Open a new tab and search Google (params: browser, query)",
+			Parameters:  []string{"browser", "query"},
+			Steps: []recipemodel.Step{
+				{Kind: recipemodel.StepOpenApp, AppName: "{{browser}}"},
+				{Kind: recipemodel.StepWaitForWindow, Text: "{{browser}}", Ms: 6000},
+				{Kind: recipemodel.StepPressKey, Key: "ctrl+t"},
+				{Kind: recipemodel.StepSleepMs, Ms: 400},
+				{Kind: recipemodel.StepClearField},
+				{Kind: recipemodel.StepTypeText, Text: "{{query}}"},
+				{Kind: recipemodel.StepSleepMs, Ms: 150},
+				{Kind: recipemodel.StepPressKey, Key: "return"},
+			},
+		},
+		"browser_click_link": {
+			Description: "Click a visible link/button on the page by its text (params: text)",
+			Parameters:  []string{"text"},
+			Steps: []recipemodel.Step{
+				{Kind: recipemodel.StepClickText, Text: "{{text}}"},
+			},
+		},
+
+		// ── Settings recipes (GNOME / Cinnamon / KDE Plasma) ─────────────
+		"settings_open": {
+			Description: "Open the system Settings app and wait for it",
+			Steps: []recipemodel.Step{
+				{Kind: recipemodel.StepOpenApp, AppName: "Settings"},
+				{Kind: recipemodel.StepWaitForWindow, Text: "Settings", Ms: 6000},
+			},
+		},
+		"settings_search": {
+			Description: "Open Settings and search inside it (param: query)",
+			Parameters:  []string{"query"},
+			Steps: []recipemodel.Step{
+				{Kind: recipemodel.StepOpenApp, AppName: "Settings"},
+				{Kind: recipemodel.StepWaitForWindow, Text: "Settings", Ms: 6000},
+				{Kind: recipemodel.StepSleepMs, Ms: 400},
+				// GNOME Control Center: Ctrl+F focuses the integrated search bar.
+				{Kind: recipemodel.StepPressKey, Key: "ctrl+f"},
+				{Kind: recipemodel.StepSleepMs, Ms: 350},
+				{Kind: recipemodel.StepClearField},
+				{Kind: recipemodel.StepTypeText, Text: "{{query}}"},
+				{Kind: recipemodel.StepSleepMs, Ms: 600},
+			},
+		},
+		"settings_open_panel": {
+			Description: "Open Settings and switch to a specific panel by name (param: panel)",
+			Parameters:  []string{"panel"},
+			Steps: []recipemodel.Step{
+				{Kind: recipemodel.StepOpenApp, AppName: "Settings"},
+				{Kind: recipemodel.StepWaitForWindow, Text: "Settings", Ms: 6000},
+				{Kind: recipemodel.StepSleepMs, Ms: 400},
+				{Kind: recipemodel.StepClickFuzzy, Label: "{{panel}}"},
+			},
+		},
+
+		// ── Generic click-button recipes ─────────────────────────────────
+		"click_button": {
+			Description: "Click a button or UI element in the current frontmost app by its visible label (param: label)",
+			Parameters:  []string{"label"},
+			Steps: []recipemodel.Step{
+				{Kind: recipemodel.StepClickFuzzy, Label: "{{label}}"},
+			},
+		},
+		"press_button_in_app": {
+			Description: "Open an app, wait for it, then click a button inside it (params: app, label)",
+			Parameters:  []string{"app", "label"},
+			Steps: []recipemodel.Step{
+				{Kind: recipemodel.StepOpenApp, AppName: "{{app}}"},
+				{Kind: recipemodel.StepWaitForWindow, Text: "{{app}}", Ms: 5000},
+				{Kind: recipemodel.StepSleepMs, Ms: 400},
+				{Kind: recipemodel.StepClickFuzzy, Label: "{{label}}"},
 			},
 		},
 

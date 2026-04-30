@@ -10,13 +10,38 @@ import (
 // fallbackHelp is returned when the parser cannot understand the request.
 const fallbackHelp = `I did not understand. The local parser supports:
 
-English: open <app>, type <text>, send, press <key>, click <label>,
-         screenshot, list <path>, read <path>, run <shell>, copy <text>, paste
-Arabic:  افتح <app>، اكتب <text>، ارسل، اضغط <key>، انقر <label>،
-         لقطة شاشة، اعرض <path>، اقرأ <path>، شغل <cmd>، انسخ <text>، الصق
+Basic:
+  English:  open <app>, type <text>, send, press <key>, click <label>,
+            screenshot, list <path>, read <path>, run <shell>, copy <text>, paste
+  Arabic:   افتح <app>، اكتب <text>، ارسل، اضغط <key>، انقر <label>،
+            لقطة شاشة، اعرض <path>، اقرأ <path>، شغل <cmd>، انسخ <text>، الصق
+
+Messaging (WhatsApp / Slack / Discord):
+  open whatsapp and send azozz a message hello
+  ارسل لعزوز في الواتساب: مرحبا
+  واتساب عزوز: مرحبا
+
+Browser:
+  open firefox and go to github.com
+  افتح فايرفوكس وروح إلى github.com
+  اكتب google.com في شريط العنوان
+  ابحث عن "go programming"
+  ارجع / تحديث / علامة تبويب جديدة
+
+Settings:
+  search settings for wifi
+  ابحث في الإعدادات عن WiFi
+  open WiFi settings / افتح إعدادات WiFi
+
+Click buttons:
+  click the send button
+  press button OK
+  اضغط زر إرسال
+  انقر على زر حفظ
+  اضغط على Send في WhatsApp
 
 Combine steps with "and" / "then" / "," — or Arabic "ثم".
-Example: open Safari and type hello and send`
+Example: open firefox and go to github.com and search for golang`
 
 // Provider is a zero-dependency, zero-cost AI that parses user text into
 // tool calls using pattern matching and entity extraction.

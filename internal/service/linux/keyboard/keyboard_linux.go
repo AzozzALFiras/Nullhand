@@ -147,6 +147,29 @@ var keyNameMap = map[string]string{
 	"`": "grave", "\\": "backslash",
 }
 
+// ClearField selects all (Ctrl+A) and deletes, leaving the focused field empty.
+// Use this before typing into an address bar or replacing existing text.
+func ClearField() error {
+	if err := xdotoolKey("ctrl+a"); err != nil {
+		return fmt.Errorf("clear field (select all): %w", err)
+	}
+	time.Sleep(60 * time.Millisecond)
+	if err := xdotoolKey("Delete"); err != nil {
+		return fmt.Errorf("clear field (delete): %w", err)
+	}
+	time.Sleep(60 * time.Millisecond)
+	return nil
+}
+
+// SelectAllAndType clears the focused field then types text.
+// Equivalent to ClearField + Type.
+func SelectAllAndType(text string) error {
+	if err := ClearField(); err != nil {
+		return err
+	}
+	return Type(text)
+}
+
 // xdotoolKey sends a key combo via xdotool key (e.g. "ctrl+v", "Return").
 func xdotoolKey(combo string) error {
 	cmd := exec.Command("xdotool", "key", combo)

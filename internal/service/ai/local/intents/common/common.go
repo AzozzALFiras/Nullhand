@@ -11,22 +11,34 @@ import (
 func init() {
 	intents.RegisterSmart(
 		// ── Browse folder ────────────────────────────────────────────
-		// Extremely flexible matching - any mention of browsing/listing + a path
+		// Match only when the user clearly intends to browse files/folders
+		// (explicit folder/files/directory keyword OR a path prefix or
+		// well-known shortcut name). This prevents "open Safari" from being
+		// captured as "browse Safari folder".
 		intents.Intent{
 			Re: regexp.MustCompile(`(?i)^(?:` +
-				// English variations (including typos)
-				`(?:list|show|open|browse|browser|brows|get|view|display|see|check)\s+` +
-				`(?:(?:the\s+)?(?:folders?|files?|directory|dir|contents?|items?)\s+(?:in|of|at|from|for)\s+)?` +
+				// English: requires an explicit folder/files keyword.
+				`(?:list|show|browse|browser|brows|view|display|get|check|open)\s+(?:the\s+)?(?:folders?|files?|directory|dir|contents?|items?)\s+(?:in|of|at|from|for)\s+` +
 				`|` +
-				// "folders in X" / "files in X"
+				// "folders in X" / "files in X" (no leading verb)
 				`(?:folders?|files?|directory|dir)\s+(?:in|of|at)\s+` +
 				`|` +
-				// Arabic variations
-				`(?:تصفح|استعرض|اعرض|عرض|افتح|شوف|وريني)\s+(?:(?:المجلدات|الملفات|محتوى|قائمة)\s+(?:في|بـ|من)\s+)?` +
+				// Arabic with explicit folder/files keyword
+				`(?:تصفح|استعرض|اعرض|عرض|افتح|شوف|وريني)\s+(?:المجلدات|الملفات|محتوى|قائمة)\s+(?:في|بـ|من)\s+` +
 				`|` +
 				// "قائمة المجلدات في X"
 				`قائمة\s+(?:المجلدات|الملفات)\s+(?:في|بـ|من)\s+` +
 				`)(.+?)$`),
+			Build: func(m []string) []aimodel.ToolCall {
+				path := strings.TrimSpace(m[1])
+				return []aimodel.ToolCall{intents.ToolCall("browse_folder", map[string]string{"path": path})}
+			},
+		},
+
+		// Bare "browse X" / "تصفح X" — only when X is clearly a path or
+		// well-known folder shortcut (not an app name like "Safari").
+		intents.Intent{
+			Re: regexp.MustCompile(`(?i)^(?:browse|تصفح|استعرض)\s+(~[\w\-./]*|/\S+|documents|desktop|downloads|home|المستندات|سطح\s+المكتب|التنزيلات|الرئيسية)\s*\.?$`),
 			Build: func(m []string) []aimodel.ToolCall {
 				path := strings.TrimSpace(m[1])
 				return []aimodel.ToolCall{intents.ToolCall("browse_folder", map[string]string{"path": path})}

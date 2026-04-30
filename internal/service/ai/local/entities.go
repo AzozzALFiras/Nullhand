@@ -20,6 +20,7 @@ type Entities struct {
 	Query     string      // search query
 	RawText   string      // original text
 	LowerText string      // lowercase version
+	HasButton bool        // user said "button" / "زر"
 }
 
 // AppEntity is a detected application mention.
@@ -41,7 +42,7 @@ type Modifier struct {
 
 var openActions = map[string]bool{
 	"open": true, "launch": true, "start": true,
-	"افتح": true, "شغل": true, "شغّل": true,
+	"افتح": true, "شغل": true, "شغّل": true, "إفتح": true,
 }
 
 var runActions = map[string]bool{
@@ -57,16 +58,57 @@ var browseActions = map[string]bool{
 
 var searchActions = map[string]bool{
 	"search": true, "find": true, "google": true, "look": true,
-	"ابحث": true, "بحث": true,
+	"ابحث": true, "بحث": true, "فتش": true, "جد": true, "ابحثلي": true,
 }
 
 var sendActions = map[string]bool{
 	"send": true, "message": true, "tell": true, "told": true, "write": true, "dm": true,
-	"ارسل": true, "أرسل": true, "راسل": true,
+	"ارسل": true, "أرسل": true, "راسل": true, "ابعث": true, "إبعث": true,
+}
+
+var clickActions = map[string]bool{
+	"click": true, "tap": true, "press": true, "hit": true, "select": true, "choose": true,
+	"انقر": true, "اضغط": true, "اختر": true, "حدد": true, "إضغط": true, "إنقر": true,
+}
+
+var typeActions = map[string]bool{
+	"type": true, "write": true, "input": true,
+	"اكتب": true, "أكتب": true, "أدخل": true, "ادخل": true, "طبع": true,
+}
+
+var navigateActions = map[string]bool{
+	"go": true, "navigate": true, "visit": true, "browse": true,
+	"اذهب": true, "روح": true, "انتقل": true, "إنتقل": true, "إذهب": true, "زور": true,
+}
+
+var backActions = map[string]bool{
+	"back": true, "previous": true,
+	"ارجع": true, "رجوع": true, "خلف": true, "السابق": true, "إرجع": true,
+}
+
+var forwardActions = map[string]bool{
+	"forward": true, "next": true,
+	"الأمام": true, "التالي": true, "التالى": true,
+}
+
+var refreshActions = map[string]bool{
+	"refresh": true, "reload":  true,
+	"تحديث": true, "حدث":     true, "أعد":     true,
+}
+
+var closeActions = map[string]bool{
+	"close": true, "quit": true,
+	"اغلق": true, "أغلق": true, "اقفل": true, "إغلاق": true, "إغلق": true,
 }
 
 var gitActions = map[string]bool{
 	"push": true, "pull": true, "commit": true, "status": true, "clone": true, "fetch": true,
+}
+
+// buttonWords are markers that indicate the user wants to click a button.
+var buttonWords = map[string]bool{
+	"button": true, "btn": true,
+	"زر": true, "الزر": true, "زرّ": true,
 }
 
 var modifierWords = map[string]bool{
@@ -201,18 +243,37 @@ func (e *Entities) extractActions() {
 	words := strings.Fields(e.LowerText)
 	for _, w := range words {
 		w = strings.TrimSuffix(w, ".")
-		if openActions[w] {
+		w = strings.TrimSuffix(w, "،")
+		switch {
+		case openActions[w]:
 			e.Actions = append(e.Actions, "open")
-		} else if runActions[w] {
+		case runActions[w]:
 			e.Actions = append(e.Actions, "run")
-		} else if browseActions[w] {
+		case browseActions[w]:
 			e.Actions = append(e.Actions, "browse")
-		} else if searchActions[w] {
+		case searchActions[w]:
 			e.Actions = append(e.Actions, "search")
-		} else if sendActions[w] {
+		case sendActions[w]:
 			e.Actions = append(e.Actions, "send")
-		} else if gitActions[w] {
+		case clickActions[w]:
+			e.Actions = append(e.Actions, "click")
+		case typeActions[w]:
+			e.Actions = append(e.Actions, "type")
+		case navigateActions[w]:
+			e.Actions = append(e.Actions, "navigate")
+		case backActions[w]:
+			e.Actions = append(e.Actions, "back")
+		case forwardActions[w]:
+			e.Actions = append(e.Actions, "forward")
+		case refreshActions[w]:
+			e.Actions = append(e.Actions, "refresh")
+		case closeActions[w]:
+			e.Actions = append(e.Actions, "close")
+		case gitActions[w]:
 			e.Actions = append(e.Actions, "git_"+w)
+		}
+		if buttonWords[w] {
+			e.HasButton = true
 		}
 	}
 }

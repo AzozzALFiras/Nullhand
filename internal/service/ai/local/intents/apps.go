@@ -26,6 +26,8 @@ var AppNameMap = map[string]string{
 	// Arabic
 	"التيرمنل": "Terminal", "الطرفية": "Terminal", "تيرمنل": "Terminal", "الترمنل": "Terminal",
 	"سفاري": "Safari", "كروم": "Google Chrome", "قوقل كروم": "Google Chrome", "جوجل كروم": "Google Chrome",
+	"فايرفوكس": "Firefox", "فاير فوكس": "Firefox", "فيرفوكس": "Firefox",
+	"المتصفح": "Firefox", "متصفح": "Firefox",
 	"واتساب": "WhatsApp", "واتس": "WhatsApp", "الواتساب": "WhatsApp", "الواتس": "WhatsApp",
 	"سلاك": "Slack", "ديسكورد": "Discord", "دسكورد": "Discord",
 	"تلقرام": "Telegram", "تليقرام": "Telegram", "تليجرام": "Telegram",

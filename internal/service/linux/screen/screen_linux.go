@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Capture takes a full-screen screenshot and returns the PNG bytes.
@@ -180,4 +181,71 @@ func frontWindowID() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// WindowTitle returns the title of the active (frontmost) window via xdotool.
+// Empty string if no window is active or xdotool fails.
+func WindowTitle() (string, error) {
+	cmd := exec.Command("xdotool", "getactivewindow", "getwindowname")
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("xdotool getwindowname: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// AnyWindowTitle searches all open windows for one whose title contains
+// titleSubstr (case-insensitive). Returns the matching window's title or
+// empty string if none. Uses wmctrl -l for the listing.
+func AnyWindowTitle(titleSubstr string) (string, error) {
+	if titleSubstr == "" {
+		return WindowTitle()
+	}
+	cmd := exec.Command("wmctrl", "-l")
+	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("wmctrl -l: %w", err)
+	}
+	needle := strings.ToLower(titleSubstr)
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.SplitN(line, " ", 5)
+		if len(fields) < 5 {
+			continue
+		}
+		title := fields[4]
+		if strings.Contains(strings.ToLower(title), needle) {
+			return strings.TrimSpace(title), nil
+		}
+	}
+	return "", nil
+}
+
+// WaitForWindow polls every 200ms until either the active window or any open
+// window has a title containing titleSubstr (case-insensitive), or until the
+// timeout expires. Returns the matched title on success.
+func WaitForWindow(titleSubstr string, timeoutMs int) (string, error) {
+	if titleSubstr == "" {
+		return "", fmt.Errorf("WaitForWindow: titleSubstr is required")
+	}
+	if timeoutMs <= 0 {
+		timeoutMs = 5000
+	}
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	needle := strings.ToLower(titleSubstr)
+	for {
+		// Check active window first (cheaper).
+		if title, err := WindowTitle(); err == nil && strings.Contains(strings.ToLower(title), needle) {
+			return title, nil
+		}
+		// Then any open window.
+		if title, err := AnyWindowTitle(titleSubstr); err == nil && title != "" {
+			return title, nil
+		}
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("WaitForWindow: timeout after %dms waiting for window %q", timeoutMs, titleSubstr)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }

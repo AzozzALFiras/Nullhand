@@ -8,17 +8,21 @@ import (
 	"github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents"
 
 	// Import all intent packages to trigger their init() registration.
-	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/browser"
-	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/closeapp"
-	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/common"
-	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/discord"
-	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/finder"
-	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/messages"
+	// IMPORTANT: import order is the smart-intent matching order. List the most
+	// specific patterns first so they match before more generic ones.
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/settings"
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/buttons"
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/whatsapp"
 	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/slack"
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/discord"
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/messages"
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/finder"
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/closeapp"
 	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/system"
 	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/terminal"
 	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/vscode"
-	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/whatsapp"
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/browser"
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/common"
 )
 
 // connectorRe splits text on "and"/"then"/"," and Arabic "ثم".
@@ -50,15 +54,20 @@ func ParseWithContext(text string, ctx *SessionContext) []aimodel.ToolCall {
 
 		// Check if it's a known simple command (screenshot, send, help, etc.)
 		isSimpleKnown := matchSimple(text) != nil
+		// Or a smart pattern (e.g. whatsapp send, settings search).
+		isSmartKnown := matchSmart(text) != nil
 
 		// These intent types are "escape" commands — the user wants to do
 		// something different, not type in the terminal.
-		isEscapeIntent := isSimpleKnown ||
+		isEscapeIntent := isSimpleKnown || isSmartKnown ||
 			classified.Type == IntentAppFeature ||
 			classified.Type == IntentOpenApp ||
 			classified.Type == IntentFileBrowse ||
 			classified.Type == IntentBrowserNav ||
-			classified.Type == IntentMessaging
+			classified.Type == IntentMessaging ||
+			classified.Type == IntentClickButton ||
+			classified.Type == IntentSettingsSearch ||
+			classified.Type == IntentSettingsPanel
 
 		if !isEscapeIntent {
 			// Not an escape command → type it in the active terminal/chat
@@ -74,7 +83,13 @@ func ParseWithContext(text string, ctx *SessionContext) []aimodel.ToolCall {
 		}
 	}
 
-	// Phase 1+2+3: Smart classification on FULL text
+	// Phase 0: Smart regex patterns on full text (whatsapp, browser, settings, buttons).
+	// These take priority because they're more specific than entity classification.
+	if calls := matchSmart(text); len(calls) > 0 {
+		return calls
+	}
+
+	// Phase 1+2+3: Smart classification on FULL text via entity extraction.
 	entities := Extract(text)
 	classified := ClassifyWithContext(entities, ctx)
 
@@ -114,6 +129,19 @@ func matchSimple(segment string) []aimodel.ToolCall {
 	for _, it := range intents.SimpleIntents() {
 		if m := it.Re.FindStringSubmatch(segment); m != nil {
 			return it.Build(m)
+		}
+	}
+	return nil
+}
+
+// matchSmart walks the smart intent registry. Returns nil if no pattern matches
+// or if the matched pattern's Build returns nil.
+func matchSmart(text string) []aimodel.ToolCall {
+	for _, it := range intents.SmartIntents() {
+		if m := it.Re.FindStringSubmatch(text); m != nil {
+			if calls := it.Build(m); len(calls) > 0 {
+				return calls
+			}
 		}
 	}
 	return nil

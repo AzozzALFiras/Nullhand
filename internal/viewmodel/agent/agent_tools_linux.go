@@ -14,6 +14,7 @@ import (
 	filesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/files"
 	kbsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/keyboard"
 	mousesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/mouse"
+	ocrsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/ocr"
 	palettesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/palette"
 	screensvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/screen"
 	shellsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/shell"
@@ -324,6 +325,72 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 		}
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 		return textParts(fmt.Sprintf("waited %dms", ms)), nil
+
+	case "wait_for_window":
+		title := args["title"]
+		timeout := parseTimeoutMs(args["timeout_ms"], 5000)
+		got, err := screensvc.WaitForWindow(title, timeout)
+		if err != nil {
+			return textParts(fmt.Sprintf("❌ %v", err)), err
+		}
+		return textParts(fmt.Sprintf("window ready: %s", got)), nil
+
+	case "wait_for_text":
+		text := args["text"]
+		timeout := parseTimeoutMs(args["timeout_ms"], 5000)
+		box, err := ocrsvc.WaitForText(text, timeout)
+		if err != nil {
+			return textParts(fmt.Sprintf("❌ %v", err)), err
+		}
+		return textParts(fmt.Sprintf("text %q found at (%d,%d) size %dx%d", text, box.X, box.Y, box.W, box.H)), nil
+
+	case "wait_for_element":
+		app := args["app_name"]
+		label := args["label"]
+		timeout := parseTimeoutMs(args["timeout_ms"], 5000)
+		if err := a11ysvc.WaitForElement(app, label, timeout); err != nil {
+			return textParts(fmt.Sprintf("❌ %v", err)), err
+		}
+		return textParts(fmt.Sprintf("element %q present", label)), nil
+
+	case "click_text":
+		text := args["text"]
+		box, found, err := ocrsvc.LocateText(text)
+		if err != nil {
+			return textParts(fmt.Sprintf("❌ OCR error: %v", err)), err
+		}
+		if !found {
+			return textParts(fmt.Sprintf("❌ text %q not found on screen", text)), fmt.Errorf("not found")
+		}
+		if err := mousesvc.Click(box.CenterX, box.CenterY); err != nil {
+			return textParts(fmt.Sprintf("❌ click failed: %v", err)), err
+		}
+		return textParts(fmt.Sprintf("clicked %q at (%d,%d)", text, box.CenterX, box.CenterY)), nil
+
+	case "click_ui_element_fuzzy":
+		app := args["app_name"]
+		label := args["label"]
+		if err := a11ysvc.ClickFuzzy(app, label); err == nil {
+			return textParts(fmt.Sprintf("clicked %q via AT-SPI fuzzy", label)), nil
+		}
+		// Fallback: OCR-based click.
+		box, found, err := ocrsvc.LocateText(label)
+		if err != nil {
+			return textParts(fmt.Sprintf("❌ AT-SPI failed and OCR error: %v", err)), err
+		}
+		if !found {
+			return textParts(fmt.Sprintf("❌ %q not found via AT-SPI or OCR", label)), fmt.Errorf("not found")
+		}
+		if err := mousesvc.Click(box.CenterX, box.CenterY); err != nil {
+			return textParts(fmt.Sprintf("❌ click failed: %v", err)), err
+		}
+		return textParts(fmt.Sprintf("clicked %q via OCR fallback at (%d,%d)", label, box.CenterX, box.CenterY)), nil
+
+	case "clear_field":
+		if err := kbsvc.ClearField(); err != nil {
+			return textParts(fmt.Sprintf("❌ %v", err)), err
+		}
+		return textParts("cleared focused field"), nil
 
 	default:
 		return textParts(fmt.Sprintf("unknown tool: %s", tc.ToolName)), nil

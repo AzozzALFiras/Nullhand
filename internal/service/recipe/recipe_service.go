@@ -7,9 +7,13 @@ import (
 	"time"
 
 	recipemodel "github.com/AzozzALFiras/Nullhand/internal/model/recipe"
+	a11ysvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/accessibility"
 	appsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/apps"
 	kbsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/keyboard"
+	mousesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/mouse"
+	ocrsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/ocr"
 	palettesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/palette"
+	screensvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/screen"
 )
 
 // Service runs recipes by dispatching their steps to the underlying macOS
@@ -111,6 +115,18 @@ func describeStep(step recipemodel.Step) string {
 		return fmt.Sprintf("sleep(%dms)", step.Ms)
 	case recipemodel.StepFocusField:
 		return fmt.Sprintf("focus_field(label=%q)", step.Label)
+	case recipemodel.StepWaitForWindow:
+		return fmt.Sprintf("wait_for_window(%q, %dms)", step.Text, step.Ms)
+	case recipemodel.StepWaitForText:
+		return fmt.Sprintf("wait_for_text(%q, %dms)", truncate(step.Text, 40), step.Ms)
+	case recipemodel.StepWaitForElement:
+		return fmt.Sprintf("wait_for_element(label=%q, %dms)", step.Label, step.Ms)
+	case recipemodel.StepClickText:
+		return fmt.Sprintf("click_text(%q)", truncate(step.Text, 40))
+	case recipemodel.StepClickFuzzy:
+		return fmt.Sprintf("click_fuzzy(label=%q)", step.Label)
+	case recipemodel.StepClearField:
+		return "clear_field()"
 	default:
 		return string(step.Kind)
 	}
@@ -129,6 +145,41 @@ func executeStep(step recipemodel.Step) error {
 	case recipemodel.StepSleepMs:
 		time.Sleep(time.Duration(step.Ms) * time.Millisecond)
 		return nil
+	case recipemodel.StepFocusField:
+		return a11ysvc.FocusField("", step.Label)
+	case recipemodel.StepWaitForWindow:
+		_, err := screensvc.WaitForWindow(step.Text, step.Ms)
+		return err
+	case recipemodel.StepWaitForText:
+		_, err := ocrsvc.WaitForText(step.Text, step.Ms)
+		return err
+	case recipemodel.StepWaitForElement:
+		return a11ysvc.WaitForElement("", step.Label, step.Ms)
+	case recipemodel.StepClickText:
+		// OCR-based click: locate text on screen, click its center.
+		box, found, err := ocrsvc.LocateText(step.Text)
+		if err != nil {
+			return fmt.Errorf("click_text(%q): %w", step.Text, err)
+		}
+		if !found {
+			return fmt.Errorf("click_text(%q): text not found on screen", step.Text)
+		}
+		return mousesvc.Click(box.CenterX, box.CenterY)
+	case recipemodel.StepClickFuzzy:
+		// AT-SPI fuzzy first; OCR fallback if AT-SPI fails (e.g. Electron app).
+		if err := a11ysvc.ClickFuzzy("", step.Label); err == nil {
+			return nil
+		}
+		box, found, err := ocrsvc.LocateText(step.Label)
+		if err != nil {
+			return fmt.Errorf("click_fuzzy(%q): AT-SPI failed and OCR error: %w", step.Label, err)
+		}
+		if !found {
+			return fmt.Errorf("click_fuzzy(%q): not found via AT-SPI or OCR", step.Label)
+		}
+		return mousesvc.Click(box.CenterX, box.CenterY)
+	case recipemodel.StepClearField:
+		return kbsvc.ClearField()
 	default:
 		return fmt.Errorf("unknown step kind %q", step.Kind)
 	}

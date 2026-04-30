@@ -32,11 +32,15 @@ While **Nullhand** is your ultimate command center for desktop, we've built a sp
 ## Features
 
 - **Natural language control** — "open Firefox", "take a screenshot", "type Hello World"
+- **Bilingual parser (English + Arabic)** — "افتح فايرفوكس وروح إلى github.com", "ابحث في الإعدادات عن WiFi", "اضغط زر إرسال"
+- **Smart recipes with state verification** — recipes wait for windows to appear, OCR-click search results, and clear fields before typing instead of relying on fixed sleep timers
+- **Multi-step app workflows out of the box** — WhatsApp send (with contact-picker selection via OCR), browser URL navigation, Settings search, generic button click — all callable from one phrase
 - **Slash commands** — explicit commands with arguments for scripting workflows
 - **Inline quick-action menu** — one tap for the most common actions
-- **Screenshot & OCR** — capture the screen or extract visible text with Tesseract
-- **Mouse & keyboard automation** — click, double-click, right-click, drag, scroll, type, key shortcuts
-- **App launcher** — open GNOME/GTK applications by name
+- **Screenshot & OCR** — capture the screen, extract visible text, or locate a specific phrase's pixel coordinates via Tesseract HOCR
+- **Mouse & keyboard automation** — click, double-click, right-click, drag, scroll, type, key shortcuts, clear field
+- **Accessibility-aware element control** — click UI elements by exact label, fuzzy substring match, or OCR fallback for Electron apps
+- **App launcher** — open GNOME/GTK/Snap applications by name
 - **File transfer (bidirectional)** — send files from Linux to Telegram; receive files from Telegram to Linux
 - **Scheduled daily tasks** — set recurring screenshots, shell commands, or system info reports
 - **Audit log** — every action appended to `~/.nullhand/audit.log`
@@ -201,39 +205,63 @@ To re-lock the session manually, tap **Lock Bot** in `/menu` or press the `menu:
 
 ### Natural Language Examples
 
-Just send a message in plain English:
+Just send a message in plain English or Arabic. The local rule-based parser handles both languages without an API key.
 
+**Basics**
 ```
 take a screenshot
-```
-```
 what's my CPU usage
-```
-```
 open Firefox
-```
-```
-type Hello World into the terminal
-```
-```
+type Hello World
 click at 960 540
-```
-```
 press ctrl+t
-```
-```
+read the screen
+run git status in terminal
 send me /home/user/report.pdf
 ```
+
+**Browser navigation** — opens the browser, waits for the window, clears the address bar, types the URL, and hits Enter
 ```
-read the screen
+open firefox and go to github.com
+افتح فايرفوكس وروح إلى github.com
+type google.com in the address bar
+اكتب google.com في شريط العنوان
+search for "go programming"
+ابحث عن golang
+new tab / علامة تبويب جديدة
+back / ارجع
+refresh / تحديث
+close tab / أغلق التبويب
 ```
+
+**WhatsApp messaging** — opens WhatsApp, opens new-chat, types the contact name, OCR-clicks the matching contact in the autocomplete list, then types and sends the message
 ```
-run git status in terminal
+open whatsapp and send azozz a message hello
+ارسل لعزوز في الواتساب: مرحبا
+واتساب عزوز: مرحبا
+افتح واتساب وأرسل لعزوز رسالة مرحبا
 ```
+
+**Settings (GNOME / Cinnamon / KDE)** — opens Settings, focuses the integrated search bar, types the query
+```
+search settings for wifi
+ابحث في الإعدادات عن WiFi
+open WiFi settings
+افتح إعدادات WiFi
+```
+
+**Click any visible button** — tries AT-SPI fuzzy match first, falls back to OCR-locate-and-click for Electron apps
+```
+click the Send button
+press OK
+اضغط زر إرسال
+انقر على زر حفظ
+click Send in WhatsApp
+```
+
+**Schedule recurring tasks**
 ```
 schedule a screenshot every day at 9am
-```
-```
 remind me to run sysinfo every day at 14:00
 ```
 
@@ -289,6 +317,66 @@ Send `/menu` to get the quick-action toolbar with inline keyboard buttons:
 | 🔍 Read Screen | OCR — extract text from the current screen |
 | 🔒 Lock Bot | Lock the session; new OTP printed to terminal |
 | ❓ Help | Show natural language usage examples |
+
+---
+
+## Smart Recipes
+
+Recipes are pre-built multi-step workflows that the bot can run by name. Unlike a blind keystroke macro, every recipe step verifies state before the next step fires — windows must appear, fields must be empty before typing, and contact pickers are selected via OCR rather than guessed Enter presses.
+
+### Why recipes (and not just raw click/type)?
+
+A flow like *"open WhatsApp, search for Azozz, send 'hi'"* fails with naïve automation because:
+- The new-chat search box appears asynchronously after Ctrl+N
+- The autocomplete dropdown takes a variable amount of time to populate
+- Pressing Return on a typed name often jumps to the wrong contact
+- WhatsApp on Linux is Electron, so AT-SPI cannot see the contact list
+
+Nullhand's recipe engine solves this by combining six step kinds:
+
+| Step kind | What it does | Used to fix |
+|---|---|---|
+| `wait_for_window` | Polls every 200 ms until a window with a matching title is active | App-launch race conditions |
+| `wait_for_text` | Polls OCR every 400 ms until the requested phrase is visible on screen | Slow-loading dialogs and dropdowns |
+| `wait_for_element` | Polls AT-SPI every 250 ms for an element matching a label substring | Native GTK/Qt apps |
+| `click_text` | Locates a text region via OCR HOCR and clicks its bounding-box center | Electron apps where AT-SPI is blind (WhatsApp, Slack, VS Code, Discord) |
+| `click_fuzzy` | AT-SPI substring match; falls back to `click_text` automatically | Buttons whose accessible name differs slightly from the visible label |
+| `clear_field` | `Ctrl+A` then `Delete` | Replacing existing text in an address bar or search box |
+
+### Built-in recipes (selected)
+
+| Recipe | Parameters | What it does |
+|---|---|---|
+| `whatsapp_send_message` | `contact`, `message` | Open WhatsApp → wait for window → Ctrl+N → wait for "Search" → type contact → wait for autocomplete → OCR-click matching row → type message → Enter |
+| `whatsapp_new_message` | `contact` | Same as above without sending — opens the chat ready for follow-up |
+| `browser_open_url` | `browser`, `url` | Open browser → wait for window → Ctrl+L → clear field → type URL → Enter |
+| `browser_google_search` | `browser`, `query` | Same flow but submits to Google |
+| `browser_new_tab_and_search` | `browser`, `query` | Ctrl+T → clear → query → Enter |
+| `browser_click_link` | `text` | OCR-click any visible link or button on the current page |
+| `browser_back` / `browser_forward` / `browser_reload` | `browser` | Standard navigation shortcuts |
+| `settings_open` | — | Open the system Settings app and wait for it |
+| `settings_search` | `query` | Open Settings → Ctrl+F → clear → type query |
+| `settings_open_panel` | `panel` | Open Settings → fuzzy-click the named panel (WiFi, Bluetooth, Display, ...) |
+| `click_button` | `label` | Fuzzy-click a button in the frontmost app, OCR fallback included |
+| `press_button_in_app` | `app`, `label` | Open `app`, wait, then fuzzy-click the labelled button inside it |
+
+The full list is available at runtime via the `list_recipes` tool or by reading [internal/service/recipe/defaults.go](internal/service/recipe/defaults.go). User-defined recipes can be added in `~/.nullhand/recipes.json` to override or extend the defaults.
+
+### Calling a recipe
+
+Most natural-language phrases route to a recipe automatically (see the examples above). To call one explicitly:
+
+```
+recipe whatsapp_send_message {"contact":"Azozz","message":"hi"}
+recipe settings_search {"query":"WiFi"}
+recipe click_button {"label":"إرسال"}
+```
+
+Or via the AI agent's tool call (when using a cloud provider):
+
+```
+run_recipe(name="browser_open_url", params_json='{"browser":"Firefox","url":"github.com"}')
+```
 
 ---
 
@@ -509,7 +597,7 @@ Configure the provider during first-run setup or edit `~/.nullhand/config.json`.
 | DeepSeek | `deepseek` | Yes | No | Set `ai_api_key` |
 | Grok (xAI) | `grok` | Yes | No | Set `ai_api_key` |
 | Ollama (local LLM) | `ollama` | No | Model-dependent | Set `ai_base_url` and `ai_model`; use a vision model for screenshot analysis |
-| Built-in rule-based | `local` | No | No | Zero cost, zero external dependency |
+| Built-in rule-based | `local` | No | No | Zero cost, zero external dependency. Bilingual (English + Arabic). Routes to smart recipes for messaging, browser, settings, and button clicks |
 
 > **Privacy note:** Cloud providers (Claude, OpenAI, Gemini, DeepSeek, Grok) receive your commands and screenshots when the AI agent calls `analyze_screenshot`. If privacy matters, use Ollama or `local`.
 
@@ -533,6 +621,21 @@ The `local` provider requires no API key, no network, and no external process. U
   "ai_provider": "local"
 }
 ```
+
+**What `local` understands out of the box:**
+
+- All basic primitives: open/close apps, click coordinates, type, press key, screenshot, paste, run shell, list/read files, scroll, wait
+- WhatsApp / Slack / Discord / Messages send-to-contact flows (calls into smart recipes that wait for windows and OCR-click contact rows)
+- Browser navigation: open URL, search, address-bar typing, back/forward/refresh, new/close tab
+- System Settings: search inside settings, open named panel (WiFi, Bluetooth, Display, ...)
+- Button click: "click the X button" / "اضغط زر X" — uses fuzzy AT-SPI match with OCR fallback
+- Terminal commands, file browsing, git operations, VS Code/Cursor command-palette flows
+
+Both English and Arabic phrasings are supported for every flow. See the **Natural Language Examples** section above for representative phrases.
+
+Smart-pattern matching is priority-ordered: highly specific patterns (settings search, button click, app-specific messaging) are tried before generic ones (bare "search X" → Google) to avoid misclassification.
+
+The local parser does **not** support vision (screenshot analysis by an LLM) or open-ended multi-step planning — for those, use Claude/OpenAI/Gemini/Ollama.
 
 ### Option 2 — Ollama (recommended for full AI capability)
 
