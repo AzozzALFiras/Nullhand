@@ -1,5 +1,3 @@
-//go:build linux
-
 package permissions
 
 import (
@@ -7,7 +5,7 @@ import (
 	permview "github.com/AzozzALFiras/Nullhand/internal/view/permissions"
 )
 
-// ViewModel orchestrates the Linux capability checks shown at startup.
+// ViewModel orchestrates the desktop capability checks shown at startup.
 type ViewModel struct{}
 
 // New creates a permissions ViewModel.
