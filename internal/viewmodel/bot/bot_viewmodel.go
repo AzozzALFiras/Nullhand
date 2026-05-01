@@ -117,9 +117,27 @@ func New(cfg *configmodel.Config) (*ViewModel, error) {
 	})
 	vm.otp.PrintCurrentCode() // print initial code
 
+	// Persistent scheduled tasks: load from ~/.nullhand/schedule.json.
+	if home, err := os.UserHomeDir(); err == nil {
+		schedulePath := filepath.Join(home, ".nullhand", "schedule.json")
+		vm.scheduler.EnablePersistence(schedulePath)
+		if err := vm.scheduler.LoadFrom(vm.hydrateScheduledTask); err != nil {
+			log.Printf("scheduler: load %s: %v (continuing with empty schedule)", schedulePath, err)
+		} else if n := len(vm.scheduler.List()); n > 0 {
+			log.Printf("scheduler: restored %d task(s) from %s", n, schedulePath)
+		}
+	}
+
 	vm.scheduler.Start()
 	vm.poller = tgsvc.NewPoller(tgClient, vm.handleUpdate)
 	return vm, nil
+}
+
+// hydrateScheduledTask reconstructs a task action closure from its persisted
+// natural-language descriptor at startup. Returns (nil, "") if the action no
+// longer resolves (e.g. the user removed a recipe it depended on).
+func (vm *ViewModel) hydrateScheduledTask(actionText string, chatID, userID int64, taskID string) (func(), string) {
+	return vm.resolveScheduledAction(actionText, chatID, userID, taskID)
 }
 
 // Start begins polling for Telegram messages (blocking).
@@ -212,9 +230,14 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		return
 	}
 
+	// Recipe authoring detection — "save this as recipe X: ...".
+	if vm.handleRecipeAuthoring(msg.Chat.ID, msg.From.ID, msg.Text) {
+		return
+	}
+
 	// Schedule NL detection — before AI routing.
-	if hour, minute, label, action := vm.parseScheduleNL(msg.Text, msg.Chat.ID, msg.From.ID); action != nil {
-		id := vm.scheduler.Add(msg.Chat.ID, label, hour, minute, action)
+	if hour, minute, label, actionText, action := vm.parseScheduleNL(msg.Text, msg.Chat.ID, msg.From.ID); action != nil {
+		id := vm.scheduler.Add(msg.Chat.ID, msg.From.ID, label, actionText, hour, minute, action)
 		vm.auditLog(msg.From.ID, "schedule_create", fmt.Sprintf(`id=%q`, id))
 		vm.send(msg.Chat.ID, fmt.Sprintf(
 			"✅ Scheduled: %s\n🕐 Every day at %02d:%02d\n🆔 ID: %s\nUse /schedule list to see all tasks.",
@@ -525,10 +548,13 @@ func (vm *ViewModel) runAgent(chatID int64, userID int64, task string) {
 	workingMsgID, _ := vm.sendWorking(chatID)
 
 	// Set session context on the local provider so it can handle
-	// context-dependent commands like bare "ls" in terminal mode.
+	// context-dependent commands like bare "ls" in terminal mode, plus the
+	// conversation-memory fields (last browser, last contact, etc.) so
+	// follow-up commands fall back to recently-used entities.
 	if localProvider, ok := vm.agent.Provider().(*local.Provider); ok {
 		if sess := vm.session.Get(chatID); sess != nil {
 			localProvider.SetSessionContext(sess.ActiveApp, sess.ActiveMode)
+			localProvider.SetSessionMemory(sess.LastBrowser, sess.LastContact, sess.LastURL, sess.LastQuery)
 		} else {
 			localProvider.SetSessionContext("", "")
 		}
@@ -557,12 +583,17 @@ func (vm *ViewModel) runAgent(chatID int64, userID int64, task string) {
 	// Intentionally silent: no per-tool progress messages.
 	result, err := vm.agent.Run(ctx, task, nil, sendPhoto, manualFocus, browse)
 
-	// Update session context based on what tools were executed.
+	// Update session context (active app/mode) based on what tools were
+	// executed. Also extract conversation-memory fields (browser, contact,
+	// url, query) from every tool call — these accumulate so follow-up
+	// commands can fall back to them.
 	for _, tc := range vm.agent.LastToolCalls() {
 		app, mode := sessionvm.InferContextFromAction(tc.ToolName, tc.Arguments, "")
 		if app != "" && mode != "" {
 			vm.session.Set(chatID, app, mode, "")
-			break // use the last meaningful action
+		}
+		if browser, contact, url, query := sessionvm.InferMemoryFromAction(tc.ToolName, tc.Arguments); browser != "" || contact != "" || url != "" || query != "" {
+			vm.session.Remember(chatID, browser, contact, url, query)
 		}
 	}
 
@@ -926,9 +957,41 @@ func (vm *ViewModel) handleScheduleCommand(chatID int64, userID int64, args []st
 	}
 }
 
+// handleRecipeAuthoring detects "save this as recipe X: step1, step2, ..." and
+// persists the new recipe to ~/.nullhand/recipes.json. Returns true if the
+// message was handled (no further routing needed).
+func (vm *ViewModel) handleRecipeAuthoring(chatID, userID int64, text string) bool {
+	req, err := local.ParseAuthorRequest(text)
+	if req == nil && err == nil {
+		return false // not an author request
+	}
+	if err != nil {
+		vm.send(chatID, "❌ Could not save recipe: "+err.Error())
+		return true
+	}
+
+	// Add to in-memory registry.
+	vm.agent.Recipes().Set(req.Name, req.Recipe)
+
+	// Persist to disk via the recipe repository.
+	if err := reciperepo.Save(vm.agent.Recipes().All()); err != nil {
+		vm.send(chatID, fmt.Sprintf("⚠️ Recipe saved in memory but disk write failed: %v", err))
+		vm.auditLog(userID, "recipe_save_failed", fmt.Sprintf(`name=%q err=%q`, req.Name, err.Error()))
+		return true
+	}
+
+	vm.auditLog(userID, "recipe_save", fmt.Sprintf(`name=%q steps=%d`, req.Name, len(req.Recipe.Steps)))
+	vm.send(chatID, fmt.Sprintf(
+		"✅ Saved recipe %q (%d step(s)).\nRun it later by sending: recipe %s",
+		req.Name, len(req.Recipe.Steps), req.Name,
+	))
+	return true
+}
+
 // parseScheduleNL tries to extract a schedule from a natural language message.
-// Returns (hour, minute, label, actionFunc) on success; actionFunc is nil if parsing fails.
-func (vm *ViewModel) parseScheduleNL(text string, chatID int64, userID int64) (int, int, string, func()) {
+// Returns (hour, minute, label, actionText, actionFunc). actionFunc is nil
+// if parsing fails. actionText is the raw NL descriptor used for persistence.
+func (vm *ViewModel) parseScheduleNL(text string, chatID int64, userID int64) (int, int, string, string, func()) {
 	lower := strings.ToLower(strings.TrimSpace(text))
 
 	// Must look like a schedule request.
@@ -938,7 +1001,7 @@ func (vm *ViewModel) parseScheduleNL(text string, chatID int64, userID int64) (i
 		strings.Contains(lower, "remind me to") ||
 		strings.Contains(lower, "run") && strings.Contains(lower, "every day at")
 	if !isSchedule {
-		return 0, 0, "", nil
+		return 0, 0, "", "", nil
 	}
 
 	// Extract time token (e.g. "8am", "8:30am", "14:00", "9pm").
@@ -951,22 +1014,22 @@ func (vm *ViewModel) parseScheduleNL(text string, chatID int64, userID int64) (i
 		}
 	}
 	if timeIdx < 0 {
-		return 0, 0, "", nil
+		return 0, 0, "", "", nil
 	}
 
 	// Everything after the time token is the action description.
 	actionWords := fields[timeIdx+1:]
 	if len(actionWords) == 0 {
-		return 0, 0, "", nil
+		return 0, 0, "", "", nil
 	}
 	actionText := strings.Join(actionWords, " ")
 
 	// Map action description to an actual function.
 	action, label := vm.resolveScheduledAction(actionText, chatID, userID, "")
 	if action == nil {
-		return 0, 0, "", nil
+		return 0, 0, "", "", nil
 	}
-	return hour, minute, label, action
+	return hour, minute, label, actionText, action
 }
 
 // resolveScheduledAction maps a natural language action string to a func() and label.

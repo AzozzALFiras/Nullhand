@@ -68,6 +68,27 @@ func (p *Provider) SetSessionContext(app, mode string) {
 	p.sessionCtx = &SessionContext{ActiveApp: app, ActiveMode: mode}
 }
 
+// SetSessionMemory updates the conversation-memory fields on the current
+// session context. Empty strings leave the matching field unchanged.
+// Creates an empty SessionContext if one wasn't set yet.
+func (p *Provider) SetSessionMemory(lastBrowser, lastContact, lastURL, lastQuery string) {
+	if p.sessionCtx == nil {
+		p.sessionCtx = &SessionContext{}
+	}
+	if lastBrowser != "" {
+		p.sessionCtx.LastBrowser = lastBrowser
+	}
+	if lastContact != "" {
+		p.sessionCtx.LastContact = lastContact
+	}
+	if lastURL != "" {
+		p.sessionCtx.LastURL = lastURL
+	}
+	if lastQuery != "" {
+		p.sessionCtx.LastQuery = lastQuery
+	}
+}
+
 // Chat inspects the conversation history, parses the latest user message,
 // and returns either tool calls to execute or a final text reply.
 func (p *Provider) Chat(_ context.Context, history []aimodel.Message, _ []aimodel.ToolDefinition) (*aimodel.Response, error) {

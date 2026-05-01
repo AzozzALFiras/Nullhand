@@ -26,9 +26,19 @@ const (
 	IntentSimple           = "simple"             // screenshot, send, press key
 )
 
-// defaultBrowser is the browser used when no browser is specified.
-// Linux: Firefox is the most common default browser.
+// defaultBrowser is the browser used when no browser is specified and the
+// session has no remembered browser yet. Linux: Firefox is the most common.
+// macOS: Safari is the system default but Firefox/Chrome are still used.
 const defaultBrowser = "Firefox"
+
+// preferredBrowser returns the session's last-used browser, falling back to
+// defaultBrowser if no session memory is available.
+func preferredBrowser(ctx *SessionContext) string {
+	if ctx != nil && ctx.LastBrowser != "" {
+		return ctx.LastBrowser
+	}
+	return defaultBrowser
+}
 
 // ClassifiedIntent is the result of classification.
 type ClassifiedIntent struct {
@@ -50,6 +60,13 @@ type ClassifiedIntent struct {
 type SessionContext struct {
 	ActiveApp  string // "Visual Studio Code", "Terminal", etc.
 	ActiveMode string // "terminal", "claude", "browser", "editor"
+
+	// Conversation memory — populated from the session manager so follow-up
+	// commands can fall back to the most-recent referenced entities.
+	LastBrowser string
+	LastContact string
+	LastURL     string
+	LastQuery   string
 }
 
 // Classify analyzes extracted entities and determines the user's intent.
@@ -186,6 +203,11 @@ func ClassifyWithContext(e *Entities, ctx *SessionContext) *ClassifiedIntent {
 		ci.Type = IntentMessaging
 		ci.App = e.PrimaryApp()
 		ci.Contact = e.Contact
+		// Conversation memory: fall back to the last contact in the same chat
+		// when the user said "send X again" or omitted the recipient.
+		if ci.Contact == "" && ctx != nil && ctx.LastContact != "" {
+			ci.Contact = ctx.LastContact
+		}
 		ci.Message = e.Message
 		if ci.Message == "" {
 			ci.Message = e.TextAfterApps()
@@ -212,7 +234,7 @@ func ClassifyWithContext(e *Entities, ctx *SessionContext) *ClassifiedIntent {
 	// Direct search without browser specified
 	if e.HasAction("search") && len(e.Apps) == 0 {
 		ci.Type = IntentBrowserNav
-		ci.App = defaultBrowser
+		ci.App = preferredBrowser(ctx)
 		ci.Query = e.TextAfterApps()
 		if ci.Query != "" {
 			return ci
@@ -223,7 +245,7 @@ func ClassifyWithContext(e *Entities, ctx *SessionContext) *ClassifiedIntent {
 	// "go to X.com" / "اذهب إلى X.com" / "روح لـ X.com"
 	if (e.HasAction("navigate") || e.HasAction("open")) && len(e.URLs) > 0 && len(e.Apps) == 0 {
 		ci.Type = IntentBrowserNav
-		ci.App = defaultBrowser
+		ci.App = preferredBrowser(ctx)
 		ci.URL = e.URLs[0]
 		return ci
 	}

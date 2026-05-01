@@ -25,6 +25,49 @@ type TextBox struct {
 // ErrNotInstalled is returned when tesseract is not found on the system.
 var ErrNotInstalled = errors.New("tesseract is not installed — run: sudo apt install tesseract-ocr")
 
+// languagesOnce caches the result of probing tesseract for available trained
+// data files. The probe runs at most once per process; the result is reused.
+var (
+	cachedLangsArg string
+	langsProbed    bool
+)
+
+// detectLanguages probes `tesseract --list-langs` and returns the appropriate
+// `-l` argument. Picks `ara+eng` if Arabic is installed (handles bilingual UI
+// labels common in macOS / GNOME with Arabic locale), otherwise `eng`. If
+// tesseract isn't installed the result is `eng` (the call will fail anyway).
+func detectLanguages() string {
+	if langsProbed {
+		return cachedLangsArg
+	}
+	langsProbed = true
+
+	out, err := exec.Command("tesseract", "--list-langs").CombinedOutput()
+	if err != nil {
+		cachedLangsArg = "eng"
+		return cachedLangsArg
+	}
+	available := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		available[strings.TrimSpace(line)] = true
+	}
+	hasAra := available["ara"]
+	hasEng := available["eng"]
+	switch {
+	case hasAra && hasEng:
+		cachedLangsArg = "ara+eng"
+	case hasAra:
+		cachedLangsArg = "ara"
+	default:
+		cachedLangsArg = "eng"
+	}
+	return cachedLangsArg
+}
+
+// Languages returns the active tesseract language code(s) (e.g. "eng" or
+// "ara+eng"). Useful for diagnostics and the /diag command.
+func Languages() string { return detectLanguages() }
+
 // ReadScreen captures the current screen and extracts visible text via
 // Tesseract OCR. Returns the extracted text (trimmed), or ErrNotInstalled if
 // tesseract is not available, or another error if capture/OCR fails.
@@ -50,8 +93,8 @@ func ReadScreen() (string, error) {
 	}
 	tmp.Close()
 
-	// 3. Run tesseract
-	cmd := exec.Command("tesseract", tmpPath, "stdout", "-l", "eng")
+	// 3. Run tesseract with the best available language combo.
+	cmd := exec.Command("tesseract", tmpPath, "stdout", "-l", detectLanguages())
 	out, err := cmd.Output()
 	if err != nil {
 		// Check if tesseract is missing entirely
@@ -207,8 +250,8 @@ func scanScreenHOCR() ([]TextBox, error) {
 	}
 	tmp.Close()
 
-	// tesseract <image> stdout -l eng hocr
-	cmd := exec.Command("tesseract", tmpPath, "stdout", "-l", "eng", "hocr")
+	// tesseract <image> stdout -l <langs> hocr
+	cmd := exec.Command("tesseract", tmpPath, "stdout", "-l", detectLanguages(), "hocr")
 	out, err := cmd.Output()
 	if err != nil {
 		// tesseract may exit non-zero but still produce output; only error if empty.

@@ -35,14 +35,16 @@ While **Nullhand** is your ultimate command center for desktop, we've built a sp
 - **Bilingual parser (English + Arabic)** — "افتح فايرفوكس وروح إلى github.com", "ابحث في الإعدادات عن WiFi", "اضغط زر إرسال"
 - **Smart recipes with state verification** — recipes wait for windows to appear, OCR-click search results, and clear fields before typing instead of relying on fixed sleep timers
 - **Multi-step app workflows out of the box** — WhatsApp send (with contact-picker selection via OCR), browser URL navigation, Settings search, generic button click — all callable from one phrase
+- **Author your own recipes from Telegram** — "save this as recipe morning_routine: open Firefox, go to news.com" / "احفظ هذا كروتين الصباح: …" — parsed and persisted to `~/.nullhand/recipes.json`
+- **Conversation memory** — follow-up commands fall back to recently-used entities ("open Firefox" then "go to github.com" remembers Firefox; "send hi" remembers the last contact)
 - **Slash commands** — explicit commands with arguments for scripting workflows
 - **Inline quick-action menu** — one tap for the most common actions
-- **Screenshot & OCR** — capture the screen, extract visible text, or locate a specific phrase's pixel coordinates via Tesseract HOCR
+- **Screenshot & bilingual OCR** — capture the screen, extract visible text in English **or Arabic**, or locate a specific phrase's pixel coordinates via Tesseract HOCR (auto-uses `ara+eng` when the Arabic language pack is installed)
 - **Mouse & keyboard automation** — click, double-click, right-click, drag, scroll, type, key shortcuts, clear field
 - **Accessibility-aware element control** — click UI elements by exact label, fuzzy substring match, or OCR fallback for Electron apps
-- **App launcher** — open GNOME/GTK/Snap applications by name
-- **File transfer (bidirectional)** — send files from Linux to Telegram; receive files from Telegram to Linux
-- **Scheduled daily tasks** — set recurring screenshots, shell commands, or system info reports
+- **App launcher** — open GNOME/GTK/Snap applications by name (Linux) or `.app` bundles (macOS)
+- **File transfer (bidirectional)** — send files from your desktop to Telegram; receive files from Telegram to disk
+- **Persistent scheduled daily tasks** — set recurring screenshots, shell commands, or system info reports; survives bot restarts via `~/.nullhand/schedule.json`
 - **Audit log** — every action appended to `~/.nullhand/audit.log`
 - **OTP session lock** — cryptographically random 6-digit code, auto-rotates every 2 minutes
 - **Multiple AI backends** — Claude, OpenAI, Gemini, DeepSeek, Grok, Ollama, or offline local mode
@@ -122,8 +124,11 @@ sudo apt install \
 For OCR support (optional but recommended):
 
 ```bash
-sudo apt install tesseract-ocr
+sudo apt install tesseract-ocr            # English OCR
+sudo apt install tesseract-ocr-ara        # Arabic UI text (recommended for Arabic users)
 ```
+
+If both packages are present, Nullhand auto-uses `ara+eng` so `click_text("إرسال")` and `wait_for_text("بحث")` work alongside English. With only `tesseract-ocr` installed, OCR falls back to English-only and prints a one-line install hint at startup.
 
 | Tool | Package | Purpose |
 |---|---|---|
@@ -138,6 +143,7 @@ sudo apt install tesseract-ocr
 | `python3-pyatspi` | python3-pyatspi | AT-SPI accessibility tree access |
 | `at-spi2-core` | at-spi2-core | AT-SPI2 daemon |
 | `tesseract` | tesseract-ocr | OCR — read text from screen |
+| Arabic OCR pack | tesseract-ocr-ara | Recognise Arabic UI labels (auto-detected) |
 
 ### Go version
 
@@ -259,10 +265,31 @@ press OK
 click Send in WhatsApp
 ```
 
-**Schedule recurring tasks**
+**Schedule recurring tasks** (persisted across restarts)
 ```
 schedule a screenshot every day at 9am
 remind me to run sysinfo every day at 14:00
+```
+
+**Save your own recipes** — the bot turns each step into a reusable recipe and writes it to `~/.nullhand/recipes.json`
+```
+save this as recipe morning_routine: open Firefox, go to news.com, take a screenshot
+احفظ هذا كروتين الصباح: افتح Firefox، روح إلى news.com، خذ لقطة شاشة
+```
+Run a saved recipe later:
+```
+recipe morning_routine
+recipe الصباح
+```
+
+**Conversation memory** — follow-up commands fall back to recently-used entities
+```
+open Firefox
+go to github.com           ← uses Firefox automatically
+search for golang          ← still Firefox
+
+ارسل لعزوز في الواتساب: مرحبا
+ارسل: كيف الحال           ← يفهم contact = عزوز
 ```
 
 ### Slash Commands (table)
@@ -378,6 +405,46 @@ Or via the AI agent's tool call (when using a cloud provider):
 run_recipe(name="browser_open_url", params_json='{"browser":"Firefox","url":"github.com"}')
 ```
 
+### Authoring your own recipes from Telegram
+
+You don't need to edit JSON by hand. Send a single message that names the recipe and lists its steps separated by commas (or `;`, `then`, `and`, `ثم`, or newlines). Each step is a normal natural-language phrase that the bot already understands.
+
+**English**
+```
+save this as recipe morning_routine: open Firefox, go to news.com, take a screenshot
+remember as routine slack_focus: open Slack, click the Channels button
+```
+
+**Arabic**
+```
+احفظ هذا كروتين الصباح: افتح Firefox، روح إلى news.com، خذ لقطة شاشة
+احفظ روتين العمل: افتح Slack، انقر على زر Channels
+```
+
+The bot replies with `✅ Saved recipe "morning_routine" (3 step(s))` and writes the recipe to `~/.nullhand/recipes.json`. Names are normalised to `snake_case` automatically. Run them by name later:
+
+```
+recipe morning_routine
+recipe الصباح
+```
+
+**Supported step types** (any phrase that maps to one of these tools is allowed): `open_app`, `type_text`, `press_key`, `wait`, `click_text`, `click_ui_element_fuzzy`, `wait_for_text`, `wait_for_window`, `wait_for_element`, `clear_field`, `focus_via_palette`, `focus_text_field`. Coordinate-based clicks and `run_recipe` (nesting) are intentionally rejected so saved recipes stay portable across screens.
+
+### Conversation memory
+
+The local parser remembers the most recent **browser**, **contact**, **URL**, and **search query** per chat (10-minute window). Follow-up commands without an explicit subject fall back to the remembered entity:
+
+```
+open Firefox                  → opens Firefox
+go to github.com              → opens github.com in Firefox (not the default)
+ابحث عن golang               → searches in Firefox
+
+ارسل لعزوز في الواتساب: hi   → سياق contact=عزوز محفوظ
+ارسل: كيف الحال              → contact=عزوز ضمنياً
+```
+
+Memory is per-chat and not persisted across bot restarts.
+
 ---
 
 ## File Transfer
@@ -421,11 +488,17 @@ If a file with the same name already exists, a timestamp is appended automatical
 
 ## OCR
 
-Nullhand can read text visible on screen using Tesseract OCR.
+Nullhand can read text visible on screen using Tesseract OCR. Both English and Arabic UI text are supported when the matching language pack is installed.
 
 **Requires:**
 ```bash
-sudo apt install tesseract-ocr
+# Linux
+sudo apt install tesseract-ocr            # English (always required)
+sudo apt install tesseract-ocr-ara        # Arabic UI text (recommended)
+
+# macOS
+brew install tesseract                    # core
+brew install tesseract-lang               # all languages including Arabic
 ```
 
 **Trigger via natural language:**
@@ -436,6 +509,7 @@ read text on screen
 ocr
 extract text from screen
 what's written on screen
+اقرأ الشاشة / لقطة شاشة مع نص
 ```
 
 **Trigger via slash command:**
@@ -446,19 +520,21 @@ what's written on screen
 **Trigger via menu button:** tap **Read Screen** in `/menu`.
 
 **How it works:**
-1. Full screenshot is captured via `scrot`
+1. Full screenshot is captured via `scrot` (Linux) or `screencapture` (macOS)
 2. Screenshot is written to a temp file
-3. `tesseract <file> stdout -l eng` is executed
+3. `tesseract <file> stdout -l <langs>` is executed — `<langs>` is auto-detected: `ara+eng` if the Arabic pack is installed, otherwise `eng`
 4. Output is trimmed and truncated to 4096 characters (Telegram message limit)
 5. Temp file is deleted immediately after
 
-If Tesseract is not installed, the bot responds with the install command rather than crashing.
+The same auto-detected language list also drives `click_text(...)` and `wait_for_text(...)` — meaning Arabic-labelled buttons like `إرسال` can be located on screen without any configuration once the Arabic pack is installed.
+
+If Tesseract is missing entirely, the bot responds with the install command rather than crashing. If only English is installed, you'll see a one-line hint at startup suggesting how to add Arabic.
 
 ---
 
 ## Scheduled Tasks
 
-Schedule recurring daily tasks using natural language or slash commands.
+Schedule recurring daily tasks using natural language or slash commands. Tasks are persisted to `~/.nullhand/schedule.json` and automatically reloaded on bot restart.
 
 ### Creating a task (natural language)
 
@@ -548,6 +624,8 @@ Every action is appended to `~/.nullhand/audit.log`.
 | `file_receive` | File received from Telegram |
 | `downloads` | Downloads menu button |
 | `natural_language` | Free-form AI task (first 80 chars logged) |
+| `recipe_save` | User-authored recipe saved to `~/.nullhand/recipes.json` |
+| `recipe_save_failed` | Recipe parsed but disk write failed |
 | `schedule_create` | New scheduled task |
 | `schedule_cancel` | Task cancelled |
 | `scheduled_task` | Scheduled task fired |
@@ -850,12 +928,15 @@ Allocate more resources in VirtualBox Settings:
 ---
 
 ### Scheduled tasks not firing
-**Symptom:** Scheduled tasks were set but never executed.
+**Symptom:** Scheduled tasks were set but never executed at the expected time.
 
-**Cause:** Tasks are stored in memory only. They are lost when the bot restarts.
+**Diagnosis:**
+1. Confirm the tasks are loaded — `/schedule list` should show them.
+2. Verify the bot is actually running at the scheduled minute (it polls every 60s).
+3. Check `~/.nullhand/schedule.json` exists and contains the expected entries.
+4. Tail `~/.nullhand/audit.log` and look for `scheduled_task` entries firing at the right hour:minute.
 
-**Fix:** Re-create your scheduled tasks after each bot restart. Persistent scheduling
-across restarts is planned for a future version.
+**Persistence note:** tasks are saved to `~/.nullhand/schedule.json` whenever you add, cancel, or clear them, and reloaded automatically at startup. If the file is corrupted or unreadable, the bot logs a warning and starts with an empty schedule rather than failing to boot.
 
 ---
 

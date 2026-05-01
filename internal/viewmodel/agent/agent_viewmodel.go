@@ -66,6 +66,12 @@ func (vm *ViewModel) LastToolCalls() []aimodel.ToolCall {
 	return vm.lastToolCalls
 }
 
+// Recipes exposes the underlying recipe service (for runtime additions like
+// user-authored recipes). Returns nil if recipes are disabled.
+func (vm *ViewModel) Recipes() *recipesvc.Service {
+	return vm.recipes
+}
+
 // New creates an agent ViewModel with the given AI provider and recipe service.
 func New(provider aisvc.Provider, recipes *recipesvc.Service) *ViewModel {
 	vm := &ViewModel{provider: provider, recipes: recipes}

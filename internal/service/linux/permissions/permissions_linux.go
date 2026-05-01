@@ -67,6 +67,8 @@ func CheckDependencies() error {
 	}
 
 	if len(missing) == 0 {
+		// Optional: Arabic OCR pack. Don't block, just print a one-liner.
+		warnArabicOCR()
 		return nil
 	}
 
@@ -75,6 +77,22 @@ func CheckDependencies() error {
 		strings.Join(missing, ", "),
 		strings.Join(unique(pkgs), " "),
 	)
+}
+
+// warnArabicOCR prints a one-line hint when tesseract is installed but the
+// Arabic language pack is not. Bot still works in English-only OCR mode.
+func warnArabicOCR() {
+	if _, err := exec.LookPath("tesseract"); err != nil {
+		return
+	}
+	out, err := exec.Command("tesseract", "--list-langs").CombinedOutput()
+	if err != nil {
+		return
+	}
+	if strings.Contains(string(out), "\nara") || strings.HasPrefix(string(out), "ara") {
+		return
+	}
+	fmt.Println("ℹ️  Tesseract Arabic pack missing. For OCR of Arabic UI text run: sudo apt install tesseract-ocr-ara")
 }
 
 // checkScreenRecording checks that the scrot binary is present on PATH.

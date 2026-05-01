@@ -55,6 +55,23 @@ func (s *Service) Get(name string) (recipemodel.Recipe, bool) {
 	return r, ok
 }
 
+// Set adds or replaces a recipe in the in-memory registry. Use this for
+// user-defined recipes saved at runtime (e.g. via "save this as routine X").
+// Persistence to disk is the caller's responsibility.
+func (s *Service) Set(name string, r recipemodel.Recipe) {
+	r.Name = name
+	s.recipes[name] = r
+}
+
+// All returns a copy of the in-memory recipe map (suitable for persisting).
+func (s *Service) All() map[string]recipemodel.Recipe {
+	out := make(map[string]recipemodel.Recipe, len(s.recipes))
+	for name, r := range s.recipes {
+		out[name] = r
+	}
+	return out
+}
+
 // Run executes the named recipe. If dryRun is true, no steps are actually
 // performed — only a human-readable plan is returned. params are substituted
 // into step fields as {{name}} placeholders before execution.

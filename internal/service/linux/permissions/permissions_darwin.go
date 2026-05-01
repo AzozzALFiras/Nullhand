@@ -77,7 +77,25 @@ func CheckDependencies() error {
 			fmt.Println(w)
 		}
 	}
+
+	warnArabicOCR()
 	return nil
+}
+
+// warnArabicOCR prints a one-line hint when tesseract is installed but the
+// Arabic language pack is not. macOS Homebrew install: `brew install tesseract-lang`.
+func warnArabicOCR() {
+	if _, err := exec.LookPath("tesseract"); err != nil {
+		return
+	}
+	out, err := exec.Command("tesseract", "--list-langs").CombinedOutput()
+	if err != nil {
+		return
+	}
+	if strings.Contains(string(out), "\nara") || strings.HasPrefix(string(out), "ara") {
+		return
+	}
+	fmt.Println("ℹ️  Tesseract Arabic pack missing. For OCR of Arabic UI text run: brew install tesseract-lang")
 }
 
 // checkScreenRecording verifies that the bot can take a screenshot. On macOS
