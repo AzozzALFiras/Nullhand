@@ -40,6 +40,21 @@ Click buttons:
   انقر على زر حفظ
   اضغط على Send في WhatsApp
 
+Recipes:
+  /recipes                    — list all available recipes
+  /recipes show <name>        — see steps of one recipe
+  recipe <name>               — run a recipe
+  save this as recipe X: ...  — author your own recipe
+  احفظ هذا كروتين X: ...        — same in Arabic
+
+Preview / dry-run (see what would happen, NO execution):
+  preview: open whatsapp and send azozz hi
+  dry-run: open firefox and go to github.com
+  معاينة: افتح فايرفوكس وروح إلى github.com
+
+Diagnostics:
+  /health                     — system, OCR, AI provider, schedule status
+
 Combine steps with "and" / "then" / "," — or Arabic "ثم".
 Example: open firefox and go to github.com and search for golang`
 

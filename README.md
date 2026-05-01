@@ -292,6 +292,15 @@ search for golang          ← still Firefox
 ارسل: كيف الحال           ← يفهم contact = عزوز
 ```
 
+**Preview / dry-run** — see what a command will do before actually doing it
+```
+preview: open whatsapp and send azozz hi
+dry-run: open firefox and go to github.com
+معاينة: افتح فايرفوكس وروح إلى github.com
+جرب: ابحث في الإعدادات عن WiFi
+```
+The bot replies with a numbered plan of every tool call (and recipe step) that *would* run, expanding `run_recipe(...)` calls so you see the full sequence. Nothing is executed.
+
 ### Slash Commands (table)
 
 | Command | Arguments | Description |
@@ -314,6 +323,8 @@ search for golang          ← still Firefox
 | `/inspect` | — | Dump accessibility tree of the frontmost window |
 | `/ocr` | — | Extract visible text from the screen |
 | `/schedule` | `list` \| `cancel <id>` \| `clear` | Manage scheduled tasks |
+| `/recipes` | — \| `<name>` \| `show <name>` \| `run <name> [k=v ...]` \| `preview <name> [k=v ...]` \| `delete <name>` \| `rename <old> <new>` | Browse and manage built-in + user-saved recipes |
+| `/health` | — | System health: OS, AI provider, OCR languages, permissions, scheduled tasks count, recipes count |
 | `/menu` | — | Open the inline quick-action toolbar |
 
 **Keyboard shortcut examples for `/key`:**
@@ -429,6 +440,22 @@ recipe الصباح
 ```
 
 **Supported step types** (any phrase that maps to one of these tools is allowed): `open_app`, `type_text`, `press_key`, `wait`, `click_text`, `click_ui_element_fuzzy`, `wait_for_text`, `wait_for_window`, `wait_for_element`, `clear_field`, `focus_via_palette`, `focus_text_field`. Coordinate-based clicks and `run_recipe` (nesting) are intentionally rejected so saved recipes stay portable across screens.
+
+### Managing recipes from Telegram
+
+Browse and curate the recipe library through `/recipes`:
+
+```
+/recipes                               # full list (built-in + your own)
+/recipes show whatsapp_send_message    # see steps of one recipe
+/recipes run morning_routine           # execute a recipe by name
+/recipes run browser_open_url browser=Firefox url=github.com
+/recipes preview morning_routine       # dry-run; show steps without executing
+/recipes delete old_routine            # remove a user-saved recipe
+/recipes rename old_name new_name      # rename a user recipe
+```
+
+Built-in recipes are protected — you can't delete or rename them, but you can **shadow** any default by saving a new recipe with the same name (the user file overrides the default).
 
 ### Conversation memory
 
@@ -641,6 +668,34 @@ Tail it live:
 ```bash
 tail -f ~/.nullhand/audit.log
 ```
+
+---
+
+## Health Diagnostics
+
+`/health` returns a single-message snapshot of the bot's runtime state — useful for triaging "why doesn't X work?" questions without leaving Telegram.
+
+**Sample output:**
+```
+🩺 Nullhand health report
+
+Platform: linux/amd64
+AI provider: local
+OCR languages: ara+eng
+Screen Recording: ✅ ok
+Accessibility:    ✅ ok
+
+Scheduled tasks (2):
+  • task_001 — screenshot @ 09:00
+  • task_002 — sysinfo @ 14:00
+
+Recipes: 27 total (24 built-in, 3 user-defined)
+
+Allowed Telegram user: 123456789
+Session unlocked: true
+```
+
+The OCR languages line reflects what `tesseract --list-langs` returned at startup. If it shows `eng` only, install the Arabic pack to enable bilingual screen reading.
 
 ---
 

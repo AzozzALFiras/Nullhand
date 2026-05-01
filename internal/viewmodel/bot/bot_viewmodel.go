@@ -167,6 +167,8 @@ func defaultMenu() []tgsvc.BotCommand {
 		{Command: "read", Description: "Read a file"},
 		{Command: "apps", Description: "List running apps"},
 		{Command: "schedule", Description: "Manage scheduled tasks"},
+		{Command: "recipes", Description: "List, show, run, save, delete recipes"},
+		{Command: "health", Description: "System diagnostics & dependency status"},
 		{Command: "menu", Description: "Show quick action toolbar"},
 		{Command: "stop", Description: "Stop current AI task"},
 	}
@@ -227,6 +229,18 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 	if isOCRTrigger(msg.Text) {
 		vm.auditLog(msg.From.ID, "ocr")
 		go vm.runOCR(msg.Chat.ID)
+		return
+	}
+
+	// Preview / dry-run detection — "preview: <command>" / "معاينة: <command>".
+	// Returns a human-readable plan WITHOUT executing anything.
+	if inner, ok := local.IsPreviewRequest(msg.Text); ok {
+		vm.auditLog(msg.From.ID, "preview", fmt.Sprintf(`input=%q`, truncateForAudit(inner, 80)))
+		var recipes local.RecipeProvider
+		if r := vm.agent.Recipes(); r != nil {
+			recipes = r
+		}
+		vm.send(msg.Chat.ID, local.Preview(inner, recipes))
 		return
 	}
 
@@ -458,6 +472,14 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 	case routervm.RouteManual:
 		if route.Command.Name == "schedule" {
 			vm.handleScheduleCommand(msg.Chat.ID, msg.From.ID, route.Command.Args)
+			return
+		}
+		if route.Command.Name == "recipes" || route.Command.Name == "recipe" {
+			vm.handleRecipesCommand(msg.Chat.ID, msg.From.ID, route.Command.Args)
+			return
+		}
+		if route.Command.Name == "health" {
+			vm.handleHealthCommand(msg.Chat.ID, msg.From.ID)
 			return
 		}
 		// /ocr is handled directly here — no cmdExec involvement.
@@ -1280,4 +1302,12 @@ func buildProvider(cfg *configmodel.Config) (aisvc.Provider, error) {
 	default:
 		return nil, fmt.Errorf("unknown AI provider: %q", cfg.AIProvider)
 	}
+}
+
+// truncateForAudit clips s to n characters for audit-log entries.
+func truncateForAudit(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }

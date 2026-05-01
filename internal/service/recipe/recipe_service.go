@@ -72,6 +72,12 @@ func (s *Service) All() map[string]recipemodel.Recipe {
 	return out
 }
 
+// Delete removes a recipe from the in-memory registry. No-op if the name
+// doesn't exist. Persistence is the caller's responsibility.
+func (s *Service) Delete(name string) {
+	delete(s.recipes, name)
+}
+
 // Run executes the named recipe. If dryRun is true, no steps are actually
 // performed — only a human-readable plan is returned. params are substituted
 // into step fields as {{name}} placeholders before execution.
