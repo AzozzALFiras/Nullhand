@@ -36,7 +36,9 @@ While **Nullhand** is your ultimate command center for desktop, we've built a sp
 - **Smart recipes with state verification** — recipes wait for windows to appear, OCR-click search results, and clear fields before typing instead of relying on fixed sleep timers
 - **Multi-step app workflows out of the box** — WhatsApp send (with contact-picker selection via OCR), browser URL navigation, Settings search, generic button click — all callable from one phrase
 - **Author your own recipes from Telegram** — "save this as recipe morning_routine: open Firefox, go to news.com" / "احفظ هذا كروتين الصباح: …" — parsed and persisted to `~/.nullhand/recipes.json`
+- **Voice notes → text** — record a Telegram voice note in any language; Nullhand transcribes it via whisper.cpp (Arabic + English bilingual support) and runs it as if you typed it
 - **Conversation memory** — follow-up commands fall back to recently-used entities ("open Firefox" then "go to github.com" remembers Firefox; "send hi" remembers the last contact)
+- **Preview / dry-run mode** — see exactly what a command will do before running it: `preview: …` / `معاينة: …` returns a numbered execution plan with no side effects
 - **Slash commands** — explicit commands with arguments for scripting workflows
 - **Inline quick-action menu** — one tap for the most common actions
 - **Screenshot & bilingual OCR** — capture the screen, extract visible text in English **or Arabic**, or locate a specific phrase's pixel coordinates via Tesseract HOCR (auto-uses `ara+eng` when the Arabic language pack is installed)
@@ -44,7 +46,7 @@ While **Nullhand** is your ultimate command center for desktop, we've built a sp
 - **Accessibility-aware element control** — click UI elements by exact label, fuzzy substring match, or OCR fallback for Electron apps
 - **App launcher** — open GNOME/GTK/Snap applications by name (Linux) or `.app` bundles (macOS)
 - **File transfer (bidirectional)** — send files from your desktop to Telegram; receive files from Telegram to disk
-- **Persistent scheduled daily tasks** — set recurring screenshots, shell commands, or system info reports; survives bot restarts via `~/.nullhand/schedule.json`
+- **Persistent scheduled tasks (cron-like)** — set recurring screenshots, shell commands, or system info reports; supports daily, weekday, weekend, specific days (Mon/Wed/Fri), and multiple fire times per day; survives bot restarts via `~/.nullhand/schedule.json`
 - **Audit log** — every action appended to `~/.nullhand/audit.log`
 - **OTP session lock** — cryptographically random 6-digit code, auto-rotates every 2 minutes
 - **Multiple AI backends** — Claude, OpenAI, Gemini, DeepSeek, Grok, Ollama, or offline local mode
@@ -129,6 +131,21 @@ sudo apt install tesseract-ocr-ara        # Arabic UI text (recommended for Arab
 ```
 
 If both packages are present, Nullhand auto-uses `ara+eng` so `click_text("إرسال")` and `wait_for_text("بحث")` work alongside English. With only `tesseract-ocr` installed, OCR falls back to English-only and prints a one-line install hint at startup.
+
+For voice-note transcription (optional but useful for mobile users):
+
+```bash
+# Linux: install ffmpeg + whisper.cpp manually
+sudo apt install ffmpeg
+git clone https://github.com/ggerganov/whisper.cpp && cd whisper.cpp && make
+sudo cp build/bin/whisper-cli /usr/local/bin/
+bash models/download-ggml-model.sh base    # downloads ~150 MB model
+
+# macOS: Homebrew has both
+brew install ffmpeg whisper-cpp
+```
+
+Verify with `/health` after starting the bot — look for the "Voice transcription" line.
 
 | Tool | Package | Purpose |
 |---|---|---|
@@ -265,11 +282,18 @@ press OK
 click Send in WhatsApp
 ```
 
-**Schedule recurring tasks** (persisted across restarts)
+**Schedule recurring tasks** (persisted across restarts, cron-like)
 ```
 schedule a screenshot every day at 9am
 remind me to run sysinfo every day at 14:00
+schedule a screenshot every weekday at 9am
+schedule a screenshot every Monday at 8:30am
+schedule a screenshot every Mon and Wed and Fri at 9am
+schedule a screenshot every weekend at 10am
+schedule a screenshot every day at 9am and 5pm    ← multiple times
 ```
+
+**Voice notes** — record a Telegram voice note in Arabic or English; Nullhand transcribes it with whisper.cpp and runs it as a normal command. The bot replies "🎙️ Heard: <transcript>" then executes. Works with any of the natural-language patterns above.
 
 **Save your own recipes** — the bot turns each step into a reusable recipe and writes it to `~/.nullhand/recipes.json`
 ```
@@ -561,11 +585,26 @@ If Tesseract is missing entirely, the bot responds with the install command rath
 
 ## Scheduled Tasks
 
-Schedule recurring daily tasks using natural language or slash commands. Tasks are persisted to `~/.nullhand/schedule.json` and automatically reloaded on bot restart.
+Schedule recurring tasks using natural language or slash commands. Tasks are persisted to `~/.nullhand/schedule.json` and automatically reloaded on bot restart.
+
+### Cron-like schedule grammar
+
+Beyond the basic "every day at 9am" form, the parser understands:
+
+| Pattern | Example | Fires |
+|---|---|---|
+| Daily (default) | `every day at 9am` | Every day at 09:00 |
+| Specific weekday | `every Monday at 8am` | Mondays at 08:00 |
+| Multiple weekdays | `every Mon and Wed and Fri at 9am` | M/W/F at 09:00 |
+| Weekday group | `every weekday at 9am` | Mon-Fri at 09:00 |
+| Weekend group | `every weekend at 10am` | Sat+Sun at 10:00 |
+| Multiple times | `every day at 9am and 5pm` | Twice daily |
+| Combined | `every weekday at 9am and 1pm and 5pm` | Mon-Fri × 3 times |
+| Arabic weekdays | `every الإثنين at 9am` | Same as `every Monday at 9am` |
 
 ### Creating a task (natural language)
 
-The bot detects schedule intent when your message contains phrases like "every day at", "schedule", or "remind me to".
+The bot detects schedule intent when your message contains phrases like "every", "schedule", or "remind me to" and at least one time token.
 
 ```
 schedule a screenshot every day at 9am
@@ -653,6 +692,13 @@ Every action is appended to `~/.nullhand/audit.log`.
 | `natural_language` | Free-form AI task (first 80 chars logged) |
 | `recipe_save` | User-authored recipe saved to `~/.nullhand/recipes.json` |
 | `recipe_save_failed` | Recipe parsed but disk write failed |
+| `recipe_run` | `/recipes run …` invocation |
+| `recipe_preview` | `/recipes preview …` dry-run |
+| `recipe_delete` / `recipe_rename` | `/recipes delete|rename …` |
+| `voice_received` | Voice note arrived (duration + size logged) |
+| `voice_transcribed` | Whisper produced a transcript (first 80 chars logged) |
+| `health` | `/health` invocation |
+| `preview` | "preview: …" / "dry-run: …" inline preview |
 | `schedule_create` | New scheduled task |
 | `schedule_cancel` | Task cancelled |
 | `scheduled_task` | Scheduled task fired |
@@ -671,6 +717,42 @@ tail -f ~/.nullhand/audit.log
 
 ---
 
+## Voice Notes
+
+Record a voice note inside Telegram in any language and Nullhand will transcribe it via whisper.cpp, then run the resulting text through the normal command pipeline. Useful when typing on a phone is awkward — especially for Arabic.
+
+**Requires:**
+
+```bash
+# Linux
+sudo apt install ffmpeg
+# whisper.cpp: build from https://github.com/ggerganov/whisper.cpp
+# and put the resulting `whisper-cli` binary on PATH
+# Download a model file too (~150 MB for ggml-base, supports Arabic):
+#   bash whisper.cpp/models/download-ggml-model.sh base
+# Then point whisper-cli to it via -m or the WHISPER_MODEL env var.
+
+# macOS
+brew install ffmpeg
+brew install whisper-cpp
+# Models go under /opt/homebrew/share/whisper-cpp/ or similar; whisper-cli
+# auto-discovers if WHISPER_MODEL is unset.
+```
+
+**Pipeline:**
+
+1. Bot sees `voice` field on the Telegram update
+2. Downloads the .ogg via `getFile`/`download`
+3. ffmpeg converts to 16 kHz mono WAV
+4. `whisper-cli <wav> -otxt -nt -l ar` produces a `.txt` transcript
+5. Bot replies "🎙️ Heard: <transcript>" then re-routes the transcript through the normal handler
+
+The default language hint is **Arabic** because whisper.cpp's Arabic model handles English code-switching gracefully (the reverse is not true). Send `preview: …` first if you want to check the transcription before it executes.
+
+If whisper or ffmpeg is missing, the bot replies with a clear error and the install command — it never crashes silently. Verify install with `/health` (look for the "Voice transcription" line).
+
+---
+
 ## Health Diagnostics
 
 `/health` returns a single-message snapshot of the bot's runtime state — useful for triaging "why doesn't X work?" questions without leaving Telegram.
@@ -682,12 +764,14 @@ tail -f ~/.nullhand/audit.log
 Platform: linux/amd64
 AI provider: local
 OCR languages: ara+eng
+Voice transcription: ✅ whisper-cli + ffmpeg
 Screen Recording: ✅ ok
 Accessibility:    ✅ ok
 
-Scheduled tasks (2):
-  • task_001 — screenshot @ 09:00
-  • task_002 — sysinfo @ 14:00
+Scheduled tasks (3):
+  • task_001 — screenshot — Every weekday at 09:00
+  • task_002 — sysinfo — Every day at 09:00 and 17:00
+  • task_003 — backup — Every Saturday at 02:00
 
 Recipes: 27 total (24 built-in, 3 user-defined)
 

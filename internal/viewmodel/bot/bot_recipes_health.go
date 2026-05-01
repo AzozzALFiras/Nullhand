@@ -11,6 +11,7 @@ import (
 	ocrsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/ocr"
 	permsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/permissions"
 	recipesvc "github.com/AzozzALFiras/Nullhand/internal/service/recipe"
+	transcribesvc "github.com/AzozzALFiras/Nullhand/internal/service/transcribe"
 )
 
 // handleRecipesCommand processes /recipes [subcommand] [args...].
@@ -327,6 +328,13 @@ func (vm *ViewModel) formatHealth() string {
 	// OCR languages
 	sb.WriteString(fmt.Sprintf("OCR languages: %s\n", ocrsvc.Languages()))
 
+	// Voice transcription (whisper.cpp + ffmpeg)
+	if ok, label := transcribesvc.IsAvailable(); ok {
+		sb.WriteString(fmt.Sprintf("Voice transcription: ✅ %s + ffmpeg\n", label))
+	} else {
+		sb.WriteString(fmt.Sprintf("Voice transcription: ❌ %s — voice notes will fail\n", label))
+	}
+
 	// Permissions / capabilities
 	status := permsvc.Check()
 	sb.WriteString(fmt.Sprintf("Screen Recording: %s\n", okMark(status.ScreenRecording)))
@@ -336,7 +344,7 @@ func (vm *ViewModel) formatHealth() string {
 	if tasks := vm.scheduler.List(); len(tasks) > 0 {
 		sb.WriteString(fmt.Sprintf("\nScheduled tasks (%d):\n", len(tasks)))
 		for _, t := range tasks {
-			sb.WriteString(fmt.Sprintf("  • %s — %s @ %02d:%02d\n", t.ID, t.Label, t.Hour, t.Minute))
+			sb.WriteString(fmt.Sprintf("  • %s — %s — %s\n", t.ID, t.Label, formatScheduleHuman(t)))
 		}
 	} else {
 		sb.WriteString("\nScheduled tasks: none\n")

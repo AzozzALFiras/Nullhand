@@ -26,6 +26,7 @@ type Message struct {
 	Photo     []PhotoSize `json:"photo,omitempty"`
 	Video     *Video      `json:"video,omitempty"`
 	Audio     *Audio      `json:"audio,omitempty"`
+	Voice     *Voice      `json:"voice,omitempty"`
 }
 
 // Document represents a Telegram document/file.
@@ -56,6 +57,15 @@ type Video struct {
 type Audio struct {
 	FileID   string `json:"file_id"`
 	FileName string `json:"file_name,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	FileSize int    `json:"file_size,omitempty"`
+}
+
+// Voice represents a Telegram voice note (recorded in-app).
+// Telegram delivers voice notes as Opus-encoded .ogg files.
+type Voice struct {
+	FileID   string `json:"file_id"`
+	Duration int    `json:"duration"`
 	MimeType string `json:"mime_type,omitempty"`
 	FileSize int    `json:"file_size,omitempty"`
 }

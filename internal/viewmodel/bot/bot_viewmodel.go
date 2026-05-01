@@ -35,6 +35,7 @@ import (
 	screensvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/screen"
 	recipesvc "github.com/AzozzALFiras/Nullhand/internal/service/recipe"
 	tgsvc "github.com/AzozzALFiras/Nullhand/internal/service/telegram"
+	transcribesvc "github.com/AzozzALFiras/Nullhand/internal/service/transcribe"
 	tgfmt "github.com/AzozzALFiras/Nullhand/internal/view/telegram"
 	agentvm "github.com/AzozzALFiras/Nullhand/internal/viewmodel/agent"
 	cmdvm "github.com/AzozzALFiras/Nullhand/internal/viewmodel/command"
@@ -225,6 +226,14 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		return
 	}
 
+	// Voice note → transcribe → re-route as text.
+	// We do this BEFORE every other check so a voice note can carry an OTP,
+	// preview, recipe-authoring, schedule, etc. — exactly like a typed message.
+	if msg.Voice != nil {
+		go vm.handleVoiceMessage(msg)
+		return
+	}
+
 	// OCR trigger detection — checked before AI routing to avoid token spend.
 	if isOCRTrigger(msg.Text) {
 		vm.auditLog(msg.From.ID, "ocr")
@@ -250,12 +259,12 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 	}
 
 	// Schedule NL detection — before AI routing.
-	if hour, minute, label, actionText, action := vm.parseScheduleNL(msg.Text, msg.Chat.ID, msg.From.ID); action != nil {
-		id := vm.scheduler.Add(msg.Chat.ID, msg.From.ID, label, actionText, hour, minute, action)
+	if spec, ok := vm.parseScheduleNL(msg.Text, msg.Chat.ID, msg.From.ID); ok {
+		id := vm.scheduler.AddSpec(spec)
 		vm.auditLog(msg.From.ID, "schedule_create", fmt.Sprintf(`id=%q`, id))
 		vm.send(msg.Chat.ID, fmt.Sprintf(
-			"✅ Scheduled: %s\n🕐 Every day at %02d:%02d\n🆔 ID: %s\nUse /schedule list to see all tasks.",
-			label, hour, minute, id,
+			"✅ Scheduled: %s\n🕐 %s\n🆔 ID: %s\nUse /schedule list to see all tasks.",
+			spec.Label, formatScheduleHuman(spec), id,
 		))
 		return
 	}
@@ -697,6 +706,12 @@ func (vm *ViewModel) sendWorking(chatID int64) (int, error) {
 	return vm.tg.SendMessageWithKeyboard(chatID, "⏳ Working...", nil)
 }
 
+// sendWorkingWithText is sendWorking but with a custom status message.
+func (vm *ViewModel) sendWorkingWithText(chatID int64, text string) (int, error) {
+	_ = vm.tg.SendTyping(chatID)
+	return vm.tg.SendMessageWithKeyboard(chatID, text, nil)
+}
+
 // handleCallback processes inline keyboard button presses.
 func (vm *ViewModel) handleCallback(cb *msgmodel.CallbackQuery) {
 	if cb.From == nil || !vm.guard.IsAllowed(cb.From.ID) {
@@ -954,7 +969,7 @@ func (vm *ViewModel) handleScheduleCommand(chatID int64, userID int64, args []st
 		var sb strings.Builder
 		sb.WriteString("📋 Active scheduled tasks:\n")
 		for _, t := range tasks {
-			sb.WriteString(fmt.Sprintf("🆔 %s — %s — every day at %02d:%02d\n", t.ID, t.Label, t.Hour, t.Minute))
+			sb.WriteString(fmt.Sprintf("🆔 %s — %s — %s\n", t.ID, t.Label, formatScheduleHuman(t)))
 		}
 		sb.WriteString("\nUse /schedule cancel [id] to remove a task.")
 		vm.send(chatID, sb.String())
@@ -1011,47 +1026,153 @@ func (vm *ViewModel) handleRecipeAuthoring(chatID, userID int64, text string) bo
 }
 
 // parseScheduleNL tries to extract a schedule from a natural language message.
-// Returns (hour, minute, label, actionText, actionFunc). actionFunc is nil
-// if parsing fails. actionText is the raw NL descriptor used for persistence.
-func (vm *ViewModel) parseScheduleNL(text string, chatID int64, userID int64) (int, int, string, string, func()) {
+// Returns (Task, true) on success — caller passes the Task to scheduler.AddSpec.
+// Returns (Task{}, false) when the message isn't a recognised schedule.
+//
+// Supported phrasings (case-insensitive, can be combined):
+//   - "every day at 9am" / "every day at 9am and 5pm" — multiple fire times
+//   - "every monday at 8:30am" — single weekday
+//   - "every monday and wednesday at 9pm" — multiple weekdays
+//   - "every weekday at 9am" — Mon-Fri
+//   - "every weekend at 10am" — Sat+Sun
+//   - "schedule X every Friday at 2pm" — verb prefix is optional
+//   - "remind me to X every day at 14:00" — same
+func (vm *ViewModel) parseScheduleNL(text string, chatID int64, userID int64) (scheduler.Task, bool) {
 	lower := strings.ToLower(strings.TrimSpace(text))
 
-	// Must look like a schedule request.
-	isSchedule := strings.Contains(lower, "every day at") ||
-		strings.Contains(lower, "every") && strings.Contains(lower, "at") ||
+	// Quick rejection check — must contain a schedule trigger word.
+	hasTrigger := strings.Contains(lower, "every") ||
 		strings.Contains(lower, "schedule") ||
-		strings.Contains(lower, "remind me to") ||
-		strings.Contains(lower, "run") && strings.Contains(lower, "every day at")
-	if !isSchedule {
-		return 0, 0, "", "", nil
+		strings.Contains(lower, "remind me to")
+	if !hasTrigger {
+		return scheduler.Task{}, false
 	}
 
-	// Extract time token (e.g. "8am", "8:30am", "14:00", "9pm").
+	// Tokenise once.
 	fields := strings.Fields(lower)
-	hour, minute, timeIdx := -1, 0, -1
+
+	// Extract ALL time tokens — earliest is the primary, others are extras.
+	var times []hourMin
+	var firstTimeIdx, lastTimeIdx int = -1, -1
 	for i, f := range fields {
 		if h, m, ok := parseTimeToken(f); ok {
-			hour, minute, timeIdx = h, m, i
-			break
+			times = append(times, hourMin{h, m})
+			if firstTimeIdx < 0 {
+				firstTimeIdx = i
+			}
+			lastTimeIdx = i
 		}
 	}
-	if timeIdx < 0 {
-		return 0, 0, "", "", nil
+	if len(times) == 0 {
+		return scheduler.Task{}, false
 	}
 
-	// Everything after the time token is the action description.
-	actionWords := fields[timeIdx+1:]
+	// Day-of-week filter: scan tokens BEFORE the first time index.
+	days := parseWeekdays(fields[:firstTimeIdx])
+
+	// Action description is whatever comes AFTER the last time token.
+	actionWords := fields[lastTimeIdx+1:]
 	if len(actionWords) == 0 {
-		return 0, 0, "", "", nil
+		return scheduler.Task{}, false
 	}
 	actionText := strings.Join(actionWords, " ")
 
-	// Map action description to an actual function.
 	action, label := vm.resolveScheduledAction(actionText, chatID, userID, "")
 	if action == nil {
-		return 0, 0, "", "", nil
+		return scheduler.Task{}, false
 	}
-	return hour, minute, label, actionText, action
+
+	primary := times[0]
+	var extras []string
+	for _, t := range times[1:] {
+		extras = append(extras, fmt.Sprintf("%02d:%02d", t.h, t.m))
+	}
+
+	return scheduler.Task{
+		ChatID:     chatID,
+		UserID:     userID,
+		Label:      label,
+		ActionText: actionText,
+		Hour:       primary.h,
+		Minute:     primary.m,
+		Days:       days,
+		ExtraTimes: extras,
+		Action:     action,
+	}, true
+}
+
+// hourMin is a small tuple used while collecting multiple fire times.
+type hourMin struct {
+	h, m int
+}
+
+// weekdayMap maps day names (English + Arabic) to Go time.Weekday values.
+var weekdayMap = map[string]time.Weekday{
+	"sunday": time.Sunday, "sun": time.Sunday,
+	"monday": time.Monday, "mon": time.Monday,
+	"tuesday": time.Tuesday, "tue": time.Tuesday, "tues": time.Tuesday,
+	"wednesday": time.Wednesday, "wed": time.Wednesday,
+	"thursday": time.Thursday, "thu": time.Thursday, "thur": time.Thursday, "thurs": time.Thursday,
+	"friday": time.Friday, "fri": time.Friday,
+	"saturday": time.Saturday, "sat": time.Saturday,
+	// Arabic weekday names.
+	"الأحد": time.Sunday, "الاحد": time.Sunday,
+	"الإثنين": time.Monday, "الاثنين": time.Monday, "الإثنينين": time.Monday,
+	"الثلاثاء": time.Tuesday, "الأربعاء": time.Wednesday, "الاربعاء": time.Wednesday,
+	"الخميس": time.Thursday, "الجمعة": time.Friday, "السبت": time.Saturday,
+}
+
+// parseWeekdays inspects the words leading up to the time token and returns
+// any day-of-week filter implied by the message.
+//
+//	"every monday at 9am"        → [Monday]
+//	"every mon and wed at 9am"   → [Monday, Wednesday]
+//	"every weekday at 9am"       → [Mon, Tue, Wed, Thu, Fri]
+//	"every weekend at 10am"      → [Sat, Sun]
+//	"every day at 9am"           → nil (every day, no filter)
+func parseWeekdays(prefix []string) []time.Weekday {
+	// Group expansions.
+	for _, w := range prefix {
+		switch w {
+		case "weekday", "weekdays":
+			return []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday}
+		case "weekend", "weekends":
+			return []time.Weekday{time.Saturday, time.Sunday}
+		}
+	}
+	// Direct weekday name(s).
+	seen := map[time.Weekday]bool{}
+	var out []time.Weekday
+	for _, w := range prefix {
+		if d, ok := weekdayMap[w]; ok && !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// formatScheduleHuman returns a readable string for the user reply ("Every
+// Monday at 09:00 and 17:30").
+func formatScheduleHuman(t scheduler.Task) string {
+	var sb strings.Builder
+	if len(t.Days) == 0 {
+		sb.WriteString("Every day at ")
+	} else {
+		sb.WriteString("Every ")
+		names := make([]string, 0, len(t.Days))
+		for _, d := range t.Days {
+			names = append(names, d.String())
+		}
+		sb.WriteString(strings.Join(names, ", "))
+		sb.WriteString(" at ")
+	}
+	sb.WriteString(fmt.Sprintf("%02d:%02d", t.Hour, t.Minute))
+	for _, e := range t.ExtraTimes {
+		sb.WriteString(" and ")
+		sb.WriteString(e)
+	}
+	return sb.String()
 }
 
 // resolveScheduledAction maps a natural language action string to a func() and label.
@@ -1148,6 +1269,57 @@ func parseTimeToken(s string) (int, int, bool) {
 	}
 
 	return hour, minute, true
+}
+
+// handleVoiceMessage downloads a Telegram voice note, transcribes it via
+// whisper.cpp, and re-routes the resulting text through the normal message
+// handler. So a spoken "افتح فايرفوكس" behaves exactly like the typed phrase.
+func (vm *ViewModel) handleVoiceMessage(msg *msgmodel.Message) {
+	chatID := msg.Chat.ID
+	userID := msg.From.ID
+
+	vm.auditLog(userID, "voice_received", fmt.Sprintf(`duration=%ds size=%d`, msg.Voice.Duration, msg.Voice.FileSize))
+
+	workingMsgID, _ := vm.sendWorkingWithText(chatID, "🎙️ Transcribing voice…")
+
+	data, _, err := vm.tg.DownloadFile(msg.Voice.FileID)
+	if err != nil {
+		if workingMsgID > 0 {
+			_ = vm.tg.EditMessage(chatID, workingMsgID, fmt.Sprintf("❌ Failed to download voice: %v", err), nil)
+		}
+		return
+	}
+
+	// Default language hint: Arabic. Whisper's Arabic model handles
+	// English code-switching well; the reverse (English model with Arabic
+	// audio) does not. Power users can configure this later.
+	transcript, err := transcribesvc.Transcribe(data, msg.Voice.MimeType, transcribesvc.Options{
+		Language: "ar",
+	})
+	if err != nil {
+		hint := err.Error()
+		if workingMsgID > 0 {
+			_ = vm.tg.EditMessage(chatID, workingMsgID, "❌ Transcription failed:\n"+hint, nil)
+		}
+		return
+	}
+	if strings.TrimSpace(transcript) == "" {
+		if workingMsgID > 0 {
+			_ = vm.tg.EditMessage(chatID, workingMsgID, "❌ Could not understand the voice note (empty transcript).", nil)
+		}
+		return
+	}
+
+	if workingMsgID > 0 {
+		_ = vm.tg.EditMessage(chatID, workingMsgID, "🎙️ Heard: "+transcript, nil)
+	}
+	vm.auditLog(userID, "voice_transcribed", fmt.Sprintf(`text=%q`, truncateForAudit(transcript, 80)))
+
+	// Build a synthetic text message and route it through the normal handler.
+	synthetic := *msg
+	synthetic.Voice = nil
+	synthetic.Text = transcript
+	vm.handleUpdate(msgmodel.Update{Message: &synthetic})
 }
 
 // runOCR captures the screen, runs Tesseract, and edits the working message with results.

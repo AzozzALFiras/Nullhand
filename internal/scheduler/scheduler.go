@@ -10,21 +10,30 @@ import (
 	"time"
 )
 
-// Task is a recurring daily task that fires at a specific hour:minute.
+// Task is a recurring task that fires on a configurable schedule.
 //
 // Action is the closure that actually fires; it is NOT serialized. ActionText
 // is the original natural-language action description (e.g. "screenshot",
 // "run df -h") and IS serialized so the action can be rehydrated by a
 // Hydrator on startup.
+//
+// Schedule semantics — how the daily check decides whether to fire:
+//   - If Days is non-empty, fire only when time.Now().Weekday() is in Days.
+//     Days uses Go's time.Sunday=0..Saturday=6 convention.
+//   - If Days is empty (nil or zero-length), fire every day (legacy behavior).
+//   - Hour:Minute is the primary trigger time. If ExtraTimes is non-empty,
+//     the task ALSO fires at every "HH:MM" listed there (same Days filter).
 type Task struct {
-	ID         string `json:"id"`
-	Label      string `json:"label"`
-	Hour       int    `json:"hour"`
-	Minute     int    `json:"minute"`
-	ChatID     int64  `json:"chat_id"`
-	UserID     int64  `json:"user_id"`
-	ActionText string `json:"action_text"`
-	Action     func() `json:"-"`
+	ID         string         `json:"id"`
+	Label      string         `json:"label"`
+	Hour       int            `json:"hour"`
+	Minute     int            `json:"minute"`
+	Days       []time.Weekday `json:"days,omitempty"`        // empty = every day
+	ExtraTimes []string       `json:"extra_times,omitempty"` // additional "HH:MM" trigger times
+	ChatID     int64          `json:"chat_id"`
+	UserID     int64          `json:"user_id"`
+	ActionText string         `json:"action_text"`
+	Action     func()         `json:"-"`
 }
 
 // Hydrator rebuilds an Action closure from the persisted descriptor fields at
@@ -59,23 +68,32 @@ func (s *Scheduler) EnablePersistence(path string) {
 
 // Add registers a new daily task and returns its assigned ID. actionText is
 // the natural-language descriptor that a Hydrator can re-resolve on reload.
+//
+// This is the legacy single-time-per-day entry point; use AddSpec for cron-
+// style tasks (specific weekdays, multiple times per day).
 func (s *Scheduler) Add(chatID, userID int64, label, actionText string, hour, minute int, action func()) string {
-	s.mu.Lock()
-	s.counter++
-	id := fmt.Sprintf("task_%03d", s.counter)
-	s.tasks = append(s.tasks, &Task{
-		ID:         id,
-		Label:      label,
-		Hour:       hour,
-		Minute:     minute,
+	return s.AddSpec(Task{
 		ChatID:     chatID,
 		UserID:     userID,
+		Label:      label,
 		ActionText: actionText,
+		Hour:       hour,
+		Minute:     minute,
 		Action:     action,
 	})
+}
+
+// AddSpec registers a task using a fully-populated Task struct (minus ID,
+// which is generated). Use this for tasks with Days or ExtraTimes set.
+func (s *Scheduler) AddSpec(t Task) string {
+	s.mu.Lock()
+	s.counter++
+	t.ID = fmt.Sprintf("task_%03d", s.counter)
+	taskCopy := t
+	s.tasks = append(s.tasks, &taskCopy)
 	s.mu.Unlock()
 	s.persistAsync()
-	return id
+	return t.ID
 }
 
 // List returns a snapshot of all currently registered tasks.
@@ -251,13 +269,15 @@ func (s *Scheduler) loop() {
 
 func (s *Scheduler) check(t time.Time) {
 	h, m := t.Hour(), t.Minute()
+	dow := t.Weekday()
 	s.mu.Lock()
 	// Copy matching tasks before unlocking so Action() is not called under lock.
 	var fire []*Task
 	for _, task := range s.tasks {
-		if task.Hour == h && task.Minute == m {
-			fire = append(fire, task)
+		if !taskMatchesNow(task, h, m, dow) {
+			continue
 		}
+		fire = append(fire, task)
 	}
 	s.mu.Unlock()
 
@@ -271,4 +291,46 @@ func (s *Scheduler) check(t time.Time) {
 			t.Action()
 		}(task)
 	}
+}
+
+// taskMatchesNow reports whether task t should fire at the given hour, minute,
+// and weekday. Honours Days (filter) and ExtraTimes (additional fire points).
+func taskMatchesNow(t *Task, h, m int, dow time.Weekday) bool {
+	// Day-of-week filter.
+	if len(t.Days) > 0 {
+		match := false
+		for _, d := range t.Days {
+			if d == dow {
+				match = true
+				break
+			}
+		}
+		if !match {
+			return false
+		}
+	}
+	// Primary time.
+	if t.Hour == h && t.Minute == m {
+		return true
+	}
+	// Extra times — each "HH:MM".
+	for _, raw := range t.ExtraTimes {
+		eh, em, ok := parseHHMM(raw)
+		if ok && eh == h && em == m {
+			return true
+		}
+	}
+	return false
+}
+
+// parseHHMM parses "HH:MM" into hour and minute. Returns ok=false on bad input.
+func parseHHMM(s string) (int, int, bool) {
+	var h, m int
+	if _, err := fmt.Sscanf(s, "%d:%d", &h, &m); err != nil {
+		return 0, 0, false
+	}
+	if h < 0 || h > 23 || m < 0 || m > 59 {
+		return 0, 0, false
+	}
+	return h, m, true
 }
