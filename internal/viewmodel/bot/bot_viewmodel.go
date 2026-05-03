@@ -63,10 +63,16 @@ type ViewModel struct {
 	otp       *auth.OTPGate
 	audit     *audit.Logger
 	scheduler *scheduler.Scheduler
+	rate      *safety.RateLimiter
 
 	// pendingDownloads holds file receive sessions waiting for destination choice.
 	pendingDownloads   map[int64]*filetransfer.PendingDownload
 	pendingDownloadsMu sync.Mutex
+
+	// recipeImportArmed tracks chats that just ran "/recipes import" and are
+	// waiting for the next document upload to be parsed as recipes JSON.
+	recipeImportArmed map[int64]bool
+	recipeImportMu    sync.Mutex
 
 	stopMu  sync.Mutex
 	stopCtx context.CancelFunc
@@ -99,7 +105,7 @@ func New(cfg *configmodel.Config) (*ViewModel, error) {
 	vm := &ViewModel{
 		cfg:              cfg,
 		tg:               tgClient,
-		guard:            safety.New(cfg.AllowedUserID),
+		guard:            safety.New(append([]int64{cfg.AllowedUserID}, cfg.AllowedUserIDs...)...),
 		router:           routervm.New(),
 		cmdExec:          cmdvm.New(),
 		agent:            agentvm.New(aiProvider, recipes),
@@ -108,6 +114,7 @@ func New(cfg *configmodel.Config) (*ViewModel, error) {
 		otp:              auth.NewOTPGate(),
 		audit:            auditLog,
 		scheduler:        scheduler.New(),
+		rate:             safety.NewRateLimiter(rateLimitBurst(cfg), rateLimitPerMinute(cfg)),
 		pendingDownloads: make(map[int64]*filetransfer.PendingDownload),
 		pending:          make(map[int64]chan string),
 	}
@@ -168,7 +175,7 @@ func defaultMenu() []tgsvc.BotCommand {
 		{Command: "read", Description: "Read a file"},
 		{Command: "apps", Description: "List running apps"},
 		{Command: "schedule", Description: "Manage scheduled tasks"},
-		{Command: "recipes", Description: "List, show, run, save, delete recipes"},
+		{Command: "recipes", Description: "List, show, run, save, delete, export, import recipes"},
 		{Command: "health", Description: "System diagnostics & dependency status"},
 		{Command: "menu", Description: "Show quick action toolbar"},
 		{Command: "stop", Description: "Stop current AI task"},
@@ -224,6 +231,19 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 			vm.send(msg.Chat.ID, "🔒 Bot is locked. Enter the OTP shown in the terminal.")
 		}
 		return
+	}
+
+	// Per-user rate limiting. Runs after the OTP gate so a wrong-OTP brute
+	// force still consumes tokens and gets blocked. /stop is exempted so a
+	// user can always halt a runaway agent loop.
+	if msg.Text != "/stop" {
+		if ok, notify := vm.rate.Allow(msg.From.ID); !ok {
+			if notify {
+				vm.auditLog(msg.From.ID, "rate_limited")
+				vm.send(msg.Chat.ID, "⏳ Slow down — too many messages. Wait a few seconds.")
+			}
+			return
+		}
 	}
 
 	// Voice note → transcribe → re-route as text.
@@ -285,6 +305,19 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 	// File receive from Telegram (document, photo, video, audio)
 	if msg.Document != nil {
 		d := msg.Document
+		// If the chat just ran /recipes import, treat this document as a
+		// recipes JSON upload instead of routing it to the destination
+		// picker. We download synchronously: imports are small and the
+		// user expects an immediate accept/reject reply.
+		if vm.isRecipeImportArmed(msg.Chat.ID) {
+			data, _, err := vm.tg.DownloadFile(d.FileID)
+			if err != nil {
+				vm.send(msg.Chat.ID, fmt.Sprintf("❌ Failed to download %q: %v", d.FileName, err))
+				return
+			}
+			vm.handleRecipeImport(msg.Chat.ID, msg.From.ID, data, d.FileName)
+			return
+		}
 		vm.auditLog(msg.From.ID, "file_receive", fmt.Sprintf(`filename=%q`, d.FileName))
 		vm.startFileReceive(msg.Chat.ID, d.FileID, d.FileName, d.MimeType)
 		return
@@ -1482,4 +1515,28 @@ func truncateForAudit(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// rateLimitBurst resolves the per-user burst budget. Negative disables, zero
+// uses the default (10). The defaults aim to never throttle a normal
+// conversation: a typical user sends well under one message per second, while
+// a runaway client/loop will hit the cap within a few seconds.
+func rateLimitBurst(cfg *configmodel.Config) int {
+	if cfg == nil || cfg.RateLimitBurst == 0 {
+		return 10
+	}
+	if cfg.RateLimitBurst < 0 {
+		return 0
+	}
+	return cfg.RateLimitBurst
+}
+
+func rateLimitPerMinute(cfg *configmodel.Config) int {
+	if cfg == nil || cfg.RateLimitPerMinute == 0 {
+		return 30
+	}
+	if cfg.RateLimitPerMinute < 0 {
+		return 0
+	}
+	return cfg.RateLimitPerMinute
 }

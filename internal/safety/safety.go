@@ -4,7 +4,7 @@ import "sync"
 
 // Guard enforces the allowed-user whitelist and tracks pending confirmations.
 type Guard struct {
-	allowedUserID int64
+	allowed map[int64]struct{}
 
 	mu      sync.Mutex
 	pending *pendingAction
@@ -15,14 +15,32 @@ type pendingAction struct {
 	execute func() (string, error)
 }
 
-// New creates a Guard that only allows the given Telegram user ID.
-func New(allowedUserID int64) *Guard {
-	return &Guard{allowedUserID: allowedUserID}
+// New creates a Guard that allows the given Telegram user IDs. Zero-value
+// IDs are ignored. If no valid IDs are provided, the guard rejects every
+// sender — call NewMulti(...) explicitly with the IDs you want.
+func New(allowedUserIDs ...int64) *Guard {
+	g := &Guard{allowed: make(map[int64]struct{})}
+	for _, id := range allowedUserIDs {
+		if id != 0 {
+			g.allowed[id] = struct{}{}
+		}
+	}
+	return g
 }
 
-// IsAllowed reports whether the sender is the authorised user.
+// IsAllowed reports whether the sender is on the whitelist.
 func (g *Guard) IsAllowed(userID int64) bool {
-	return userID == g.allowedUserID
+	_, ok := g.allowed[userID]
+	return ok
+}
+
+// AllowedUserIDs returns a snapshot of the whitelist (unordered).
+func (g *Guard) AllowedUserIDs() []int64 {
+	out := make([]int64, 0, len(g.allowed))
+	for id := range g.allowed {
+		out = append(out, id)
+	}
+	return out
 }
 
 // SetPending stores a dangerous action awaiting /yes confirmation.

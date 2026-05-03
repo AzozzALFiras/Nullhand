@@ -45,11 +45,18 @@ type Hydrator func(actionText string, chatID, userID int64, taskID string) (func
 // It is safe for concurrent use. Optionally persists task descriptors to a
 // JSON file so schedules survive restarts.
 type Scheduler struct {
-	mu        sync.Mutex
-	tasks     []*Task
-	counter   int
-	stop      chan struct{}
-	savePath  string  // empty = no persistence
+	mu       sync.Mutex
+	tasks    []*Task
+	counter  int
+	stop     chan struct{}
+	savePath string // empty = no persistence
+
+	// persistMu serializes the on-disk writes performed by persistAsync's
+	// goroutines. Without it, two writes triggered in quick succession (e.g.
+	// AddSpec immediately followed by another AddSpec) would race on the
+	// shared `.tmp` path, occasionally producing a half-written or
+	// double-encoded JSON file.
+	persistMu sync.Mutex
 }
 
 // New creates an idle Scheduler. Call Start() to begin firing tasks.
@@ -204,6 +211,8 @@ func (s *Scheduler) persistAsync() {
 	s.mu.Unlock()
 
 	go func() {
+		s.persistMu.Lock()
+		defer s.persistMu.Unlock()
 		if err := writeTasksFile(path, snap); err != nil {
 			log.Printf("scheduler: persist %s: %v", path, err)
 		}

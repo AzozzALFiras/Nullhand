@@ -1,10 +1,15 @@
 package bot
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 
 	recipemodel "github.com/AzozzALFiras/Nullhand/internal/model/recipe"
 	reciperepo "github.com/AzozzALFiras/Nullhand/internal/repository/recipe"
@@ -77,10 +82,136 @@ func (vm *ViewModel) handleRecipesCommand(chatID, userID int64, args []string) {
 		}
 		vm.renameRecipe(chatID, userID, args[1], args[2])
 
+	case "export":
+		vm.exportRecipes(chatID, userID, svc)
+
+	case "import":
+		vm.armRecipeImport(chatID, userID)
+
 	default:
 		// Treat the first arg as a recipe name to show.
 		vm.send(chatID, formatRecipeDetails(svc, args[0]))
 	}
+}
+
+// exportRecipes serialises every user-defined recipe (built-ins are skipped
+// since they ship with the binary) and uploads it as a Telegram document.
+// The on-disk file is never touched — we serialise from the in-memory set so
+// any unsaved edits made via "save this as recipe X" are included.
+func (vm *ViewModel) exportRecipes(chatID, userID int64, svc *recipesvc.Service) {
+	builtins := configBuiltinNames(svc)
+	user := make(map[string]recipemodel.Recipe)
+	for name, r := range svc.All() {
+		if builtins[name] {
+			continue
+		}
+		user[name] = r
+	}
+	if len(user) == 0 {
+		vm.send(chatID, "ℹ️ No user recipes to export. Save one first with \"save this as recipe X: ...\"")
+		return
+	}
+
+	file := recipemodel.File{Version: 1, Recipes: user}
+	data, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		vm.send(chatID, fmt.Sprintf("❌ Export failed: %v", err))
+		return
+	}
+
+	filename := fmt.Sprintf("nullhand-recipes-%s.json", time.Now().Format("20060102-150405"))
+	if err := vm.tg.SendDocument(chatID, data, filename); err != nil {
+		vm.send(chatID, fmt.Sprintf("❌ Failed to upload: %v", err))
+		return
+	}
+	vm.auditLog(userID, "recipes_export", fmt.Sprintf(`count=%d`, len(user)))
+}
+
+// armRecipeImport puts the chat into "expect a recipes JSON" state. The next
+// document upload from this chat is consumed by handleRecipeImport instead of
+// going through the normal file-receive flow.
+func (vm *ViewModel) armRecipeImport(chatID, userID int64) {
+	vm.recipeImportMu.Lock()
+	if vm.recipeImportArmed == nil {
+		vm.recipeImportArmed = make(map[int64]bool)
+	}
+	vm.recipeImportArmed[chatID] = true
+	vm.recipeImportMu.Unlock()
+	vm.auditLog(userID, "recipes_import_arm")
+	vm.send(chatID, "📥 Send the recipes JSON file now (or any other command to cancel).")
+}
+
+// isRecipeImportArmed checks and clears the import-armed flag for chatID.
+// Returns true if the next document should be treated as a recipe import.
+func (vm *ViewModel) isRecipeImportArmed(chatID int64) bool {
+	vm.recipeImportMu.Lock()
+	defer vm.recipeImportMu.Unlock()
+	if vm.recipeImportArmed == nil {
+		return false
+	}
+	armed := vm.recipeImportArmed[chatID]
+	delete(vm.recipeImportArmed, chatID)
+	return armed
+}
+
+// handleRecipeImport parses an uploaded JSON file and merges the recipes into
+// the in-memory set, persisting them to ~/.nullhand/recipes.json. Built-in
+// recipes are protected: any incoming entry whose name collides with a
+// built-in is skipped with a warning, since overwriting it would change
+// behaviour the user did not author.
+func (vm *ViewModel) handleRecipeImport(chatID, userID int64, data []byte, filename string) {
+	svc := vm.agent.Recipes()
+	if svc == nil {
+		vm.send(chatID, "❌ Recipe service unavailable.")
+		return
+	}
+
+	var file recipemodel.File
+	if err := json.Unmarshal(data, &file); err != nil {
+		vm.send(chatID, fmt.Sprintf("❌ Invalid JSON in %q: %v", filename, err))
+		return
+	}
+	if len(file.Recipes) == 0 {
+		vm.send(chatID, "ℹ️ File contains no recipes.")
+		return
+	}
+
+	builtins := configBuiltinNames(svc)
+	added, replaced, skipped := 0, 0, 0
+	for name, r := range file.Recipes {
+		if builtins[name] {
+			skipped++
+			continue
+		}
+		if _, existed := svc.Get(name); existed {
+			replaced++
+		} else {
+			added++
+		}
+		svc.Set(name, r)
+	}
+
+	// Persist user recipes only.
+	user := make(map[string]recipemodel.Recipe)
+	for name, r := range svc.All() {
+		if builtins[name] {
+			continue
+		}
+		user[name] = r
+	}
+	if err := reciperepo.Save(user); err != nil {
+		vm.send(chatID, fmt.Sprintf("⚠️ Imported in memory but persistence failed: %v", err))
+		return
+	}
+
+	vm.auditLog(userID, "recipes_import",
+		fmt.Sprintf(`added=%d replaced=%d skipped=%d`, added, replaced, skipped))
+
+	msg := fmt.Sprintf("✅ Imported recipes: %d added, %d replaced", added, replaced)
+	if skipped > 0 {
+		msg += fmt.Sprintf(", %d skipped (built-in name collision)", skipped)
+	}
+	vm.send(chatID, msg)
 }
 
 // formatRecipeList builds a human-readable index of all recipes, sorted by
@@ -363,11 +494,70 @@ func (vm *ViewModel) formatHealth() string {
 		sb.WriteString(fmt.Sprintf("\nRecipes: %d total (%d built-in, %d user-defined)\n", len(all), len(all)-userN, userN))
 	}
 
-	// Allowed user
-	sb.WriteString(fmt.Sprintf("\nAllowed Telegram user: %d\n", vm.cfg.AllowedUserID))
+	// Storage: audit log writability + free disk space on $HOME/.nullhand
+	if home, err := os.UserHomeDir(); err == nil {
+		dir := filepath.Join(home, ".nullhand")
+		sb.WriteString(fmt.Sprintf("\nStorage dir: %s\n", dir))
+		sb.WriteString(fmt.Sprintf("Audit log writable: %s\n", okMark(isDirWritable(dir))))
+		if free, ok := freeDiskBytes(dir); ok {
+			sb.WriteString(fmt.Sprintf("Free disk space: %s\n", humanBytes(free)))
+		}
+	}
+
+	// Allowed users (legacy single ID + the list)
+	allowed := vm.guard.AllowedUserIDs()
+	sort.Slice(allowed, func(i, j int) bool { return allowed[i] < allowed[j] })
+	if len(allowed) <= 1 {
+		sb.WriteString(fmt.Sprintf("\nAllowed Telegram user: %d\n", vm.cfg.AllowedUserID))
+	} else {
+		sb.WriteString(fmt.Sprintf("\nAllowed Telegram users (%d):\n", len(allowed)))
+		for _, id := range allowed {
+			sb.WriteString(fmt.Sprintf("  • %d\n", id))
+		}
+	}
 	sb.WriteString(fmt.Sprintf("Session unlocked: %v\n", vm.otp.IsUnlocked()))
 
 	return sb.String()
+}
+
+// isDirWritable returns true if dir exists and the process can create files
+// in it. Uses a probe file so we never have to interpret stat permission bits
+// across platforms / ACLs.
+func isDirWritable(dir string) bool {
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return false
+	}
+	probe, err := os.CreateTemp(dir, ".healthprobe-*")
+	if err != nil {
+		return false
+	}
+	probePath := probe.Name()
+	_ = probe.Close()
+	_ = os.Remove(probePath)
+	return true
+}
+
+// freeDiskBytes returns the number of free bytes on the filesystem hosting
+// `path`. The second return is false when the call is unsupported or fails.
+func freeDiskBytes(path string) (uint64, bool) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return 0, false
+	}
+	return uint64(st.Bavail) * uint64(st.Bsize), true
+}
+
+func humanBytes(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := uint64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func okMark(b bool) string {
