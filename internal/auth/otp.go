@@ -110,7 +110,8 @@ func (g *OTPGate) PrintCurrentCode() {
 	fmt.Println("\n╔══════════════════════════════╗")
 	fmt.Printf("║  OTP CODE: %s          ║\n", code)
 	fmt.Println("║  Expires in 2 minutes        ║")
-	fmt.Println("╚══════════════════════════════╝\n")
+	fmt.Println("╚══════════════════════════════╝")
+	fmt.Println()
 	fmt.Println("Enter this code in Telegram to unlock the bot.")
 }
 

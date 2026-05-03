@@ -44,6 +44,19 @@ func init() {
 				return []aimodel.ToolCall{intents.ToolCall("browse_folder", map[string]string{"path": path})}
 			},
 		},
+
+		// "list <path>" / "ls <path>" / "dir <path>" — text listing of a
+		// directory (distinct from browse_folder which opens an interactive
+		// picker). Restricted to clearly path-like arguments so that
+		// "list recipes" / "list apps" continue to fall through to the
+		// matching simple intents.
+		intents.Intent{
+			Re: regexp.MustCompile(`(?i)^(?:list|ls|dir)\s+(~[\w\-./]*|/\S+|\.{1,2}(?:/\S*)?|[\w.-]+/\S*)\.?$`),
+			Build: func(m []string) []aimodel.ToolCall {
+				path := strings.TrimSpace(m[1])
+				return []aimodel.ToolCall{intents.ToolCall("list_directory", map[string]string{"path": path})}
+			},
+		},
 	)
 
 	intents.RegisterSimple(

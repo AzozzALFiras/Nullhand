@@ -28,6 +28,42 @@ import (
 // connectorRe splits text on "and"/"then"/"," and Arabic "ثم".
 var connectorRe = regexp.MustCompile(`(?i)(?:\s*,\s*(?:and|then)?\s*|\s+and\s+|\s+then\s+|\s+ثم\s+)`)
 
+// stepConnectorRe is a stricter test for explicit step chaining. Unlike
+// connectorRe it does not match a bare comma, since most natural-language
+// commands ("send a message, hi") contain commas without intending step
+// separation.
+var stepConnectorRe = regexp.MustCompile(`(?i)(?:\s+and\s+|\s+then\s+|\s+ثم\s+)`)
+
+func hasStepConnector(text string) bool {
+	return stepConnectorRe.MatchString(text)
+}
+
+// matchChainedSimple splits the text on step connectors and returns the
+// concatenated simple-intent matches if and only if every non-empty segment
+// matches a simple intent. Otherwise it returns nil so the caller can fall
+// back to the standard pipeline.
+func matchChainedSimple(text string) []aimodel.ToolCall {
+	segments := stepConnectorRe.Split(text, -1)
+	var calls []aimodel.ToolCall
+	matchedSegments := 0
+	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		matched := matchSimple(seg)
+		if len(matched) == 0 {
+			return nil
+		}
+		calls = append(calls, matched...)
+		matchedSegments++
+	}
+	if matchedSegments < 2 {
+		return nil
+	}
+	return calls
+}
+
 // Parse turns user text into tool calls using the 3-phase pipeline.
 // No session context — each message is independent.
 func Parse(text string) []aimodel.ToolCall {
@@ -80,6 +116,19 @@ func ParseWithContext(text string, ctx *SessionContext) []aimodel.ToolCall {
 			if len(calls) > 0 {
 				return calls
 			}
+		}
+	}
+
+	// Phase 0a: Explicit step chains. When the user separates steps with
+	// "and" / "then" / "ثم" AND every segment is a known simple intent
+	// (open / type / press / send / …), honor the literal chain instead of
+	// letting the entity classifier or smart patterns collapse it into a
+	// single recipe. Falls through unchanged when any segment isn't a clear
+	// simple match, so multi-word recipes like "open Safari and go to X"
+	// keep the existing browser_open_url path.
+	if hasStepConnector(text) {
+		if calls := matchChainedSimple(text); len(calls) > 0 {
+			return calls
 		}
 	}
 
