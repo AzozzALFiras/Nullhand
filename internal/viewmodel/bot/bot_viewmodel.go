@@ -177,6 +177,7 @@ func defaultMenu() []tgsvc.BotCommand {
 		{Command: "schedule", Description: "Manage scheduled tasks"},
 		{Command: "recipes", Description: "List, show, run, save, delete, export, import recipes"},
 		{Command: "health", Description: "System diagnostics & dependency status"},
+		{Command: "log", Description: "Show audit log tail (e.g. /log 20, /log search whatsapp)"},
 		{Command: "menu", Description: "Show quick action toolbar"},
 		{Command: "stop", Description: "Stop current AI task"},
 	}
@@ -522,6 +523,10 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		}
 		if route.Command.Name == "health" {
 			vm.handleHealthCommand(msg.Chat.ID, msg.From.ID)
+			return
+		}
+		if route.Command.Name == "log" {
+			vm.handleLogCommand(msg.Chat.ID, msg.From.ID, route.Command.Args)
 			return
 		}
 		// /ocr is handled directly here — no cmdExec involvement.
