@@ -75,3 +75,13 @@ func TestPreviewUnrecognized(t *testing.T) {
 		t.Errorf("expected an error message in the plan, got:\n%s", plan)
 	}
 }
+
+func TestPreviewMarksDestructiveShellAsBlocked(t *testing.T) {
+	out := Preview("run rm -rf build", nil)
+	if !strings.Contains(out, "blocked") || !strings.Contains(out, "/shell") {
+		t.Errorf("preview should warn that chat mode blocks rm and point at /shell, got:\n%s", out)
+	}
+	if safe := Preview("run ls -la", nil); strings.Contains(safe, "blocked") {
+		t.Errorf("safe command must not be marked blocked, got:\n%s", safe)
+	}
+}

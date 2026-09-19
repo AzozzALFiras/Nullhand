@@ -33,6 +33,7 @@ import (
 	filetransfer "github.com/AzozzALFiras/Nullhand/internal/service/linux/filetransfer"
 	ocrsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/ocr"
 	screensvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/screen"
+	shellsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/shell"
 	recipesvc "github.com/AzozzALFiras/Nullhand/internal/service/recipe"
 	tgsvc "github.com/AzozzALFiras/Nullhand/internal/service/telegram"
 	transcribesvc "github.com/AzozzALFiras/Nullhand/internal/service/transcribe"
@@ -92,6 +93,8 @@ func New(cfg *configmodel.Config) (*ViewModel, error) {
 		return nil, err
 	}
 
+	shellsvc.SetTimeout(time.Duration(cfg.ShellTimeoutSeconds) * time.Second)
+
 	// Load recipes: built-in defaults merged with ~/.nullhand/recipes.json overrides.
 	recipes := recipesvc.New(reciperepo.Load(recipesvc.Defaults()))
 
@@ -118,6 +121,8 @@ func New(cfg *configmodel.Config) (*ViewModel, error) {
 		pendingDownloads: make(map[int64]*filetransfer.PendingDownload),
 		pending:          make(map[int64]chan string),
 	}
+
+	vm.otp.SetIdleTimeout(idleLockTimeout(cfg))
 
 	// Wire OTP print callback so new codes are printed to terminal.
 	vm.otp.StartExpiry(func(newCode string) {
@@ -222,6 +227,17 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		return // silently ignore unauthorised senders
 	}
 
+	// Idle auto-lock: a session left unused re-locks before this message is
+	// processed, so a phone left unlocked can't be used to drive the desktop.
+	if vm.otp.LockIfIdle() {
+		vm.auditLog(msg.From.ID, "otp_idle_lock")
+		vm.send(msg.Chat.ID, fmt.Sprintf(
+			"🔒 Session locked after %s of inactivity. Enter the new OTP shown in the terminal.",
+			tgfmt.Duration(vm.otp.IdleTimeout()),
+		))
+		return
+	}
+
 	// OTP gate: must be unlocked before any commands are processed.
 	if !vm.otp.IsUnlocked() {
 		if vm.otp.TryUnlock(strings.TrimSpace(msg.Text)) {
@@ -233,6 +249,7 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		}
 		return
 	}
+	vm.otp.Touch()
 
 	// Per-user rate limiting. Runs after the OTP gate so a wrong-OTP brute
 	// force still consumes tokens and gets blocked. /stop is exempted so a
@@ -281,12 +298,26 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 
 	// Schedule NL detection — before AI routing.
 	if spec, ok := vm.parseScheduleNL(msg.Text, msg.Chat.ID, msg.From.ID); ok {
-		id := vm.scheduler.AddSpec(spec)
-		vm.auditLog(msg.From.ID, "schedule_create", fmt.Sprintf(`id=%q`, id))
-		vm.send(msg.Chat.ID, fmt.Sprintf(
-			"✅ Scheduled: %s\n🕐 %s\n🆔 ID: %s\nUse /schedule list to see all tasks.",
-			spec.Label, formatScheduleHuman(spec), id,
-		))
+		userID := msg.From.ID
+		create := func() string {
+			id := vm.scheduler.AddSpec(spec)
+			vm.auditLog(userID, "schedule_create", fmt.Sprintf(`id=%q`, id))
+			return fmt.Sprintf(
+				"✅ Scheduled: %s\n🕐 %s\n🆔 ID: %s\nUse /schedule list to see all tasks.",
+				spec.Label, formatScheduleHuman(spec), id,
+			)
+		}
+		// A scheduled command runs unattended, so a destructive one is
+		// confirmed once, up front, when the schedule is created.
+		if cmdLine, isShell := strings.CutPrefix(spec.Label, "shell: "); isShell {
+			if reason, dangerous := safety.ClassifyCommand(cmdLine); dangerous {
+				vm.auditLog(userID, "schedule_confirm_requested", fmt.Sprintf(`cmd=%q`, cmdLine))
+				vm.guard.SetPending(msg.Chat.ID, func() (string, error) { return create(), nil })
+				vm.send(msg.Chat.ID, tgfmt.ConfirmCommand(cmdLine, reason+"; schedule: "+formatScheduleHuman(spec), safety.PendingTTL))
+				return
+			}
+		}
+		vm.send(msg.Chat.ID, create())
 		return
 	}
 
@@ -390,11 +421,7 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		vm.auditLog(userID, "sysinfo")
 		workingMsgID, _ := vm.sendWorking(chatID)
 		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "status"})
-		if workingMsgID > 0 {
-			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
-		} else {
-			vm.send(chatID, result.Text)
-		}
+		vm.reply(chatID, workingMsgID, result.Text)
 		return
 	case "🔍 Read Screen":
 		vm.auditLog(userID, "ocr")
@@ -404,11 +431,7 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		vm.auditLog(userID, "clipboard")
 		workingMsgID, _ := vm.sendWorking(chatID)
 		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "paste"})
-		if workingMsgID > 0 {
-			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
-		} else {
-			vm.send(chatID, result.Text)
-		}
+		vm.reply(chatID, workingMsgID, result.Text)
 		return
 	case "📥 Downloads":
 		vm.auditLog(userID, "downloads")
@@ -416,11 +439,7 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		downloadsPath := filepath.Join(home, "Downloads")
 		workingMsgID, _ := vm.sendWorking(chatID)
 		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "ls", Args: []string{downloadsPath}})
-		if workingMsgID > 0 {
-			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
-		} else {
-			vm.send(chatID, result.Text)
-		}
+		vm.reply(chatID, workingMsgID, result.Text)
 		return
 	case "❓ Help":
 		vm.auditLog(userID, "help")
@@ -441,13 +460,7 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 				return
 			}
 			vm.auditLog(userID, "shell", fmt.Sprintf(`cmd=%q`, reply))
-			workingMsgID, _ := vm.sendWorking(chatID)
-			result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "shell", Args: strings.Fields(reply)})
-			if workingMsgID > 0 {
-				_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
-			} else {
-				vm.send(chatID, result.Text)
-			}
+			vm.runShell(chatID, userID, reply)
 		}()
 		return
 	case "📤 Send File":
@@ -500,8 +513,12 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 		vm.handleConfirmYes(msg.Chat.ID)
 
 	case routervm.RouteConfirmNo:
-		vm.guard.ClearPending()
-		vm.send(msg.Chat.ID, tgfmt.OKWith("Action cancelled."))
+		if vm.guard.ClearPending(msg.Chat.ID) {
+			vm.auditLog(msg.From.ID, "confirm_cancelled")
+			vm.send(msg.Chat.ID, tgfmt.OKWith("Action cancelled."))
+		} else {
+			vm.send(msg.Chat.ID, "No pending action to cancel.")
+		}
 
 	case routervm.RouteStop:
 		vm.stopMu.Lock()
@@ -543,12 +560,16 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 			}
 			return
 		}
+		if route.Command.Name == "shell" {
+			cmdLine := strings.Join(route.Command.Args, " ")
+			vm.auditLog(msg.From.ID, "shell", fmt.Sprintf(`cmd=%q`, cmdLine))
+			vm.runShell(msg.Chat.ID, msg.From.ID, cmdLine)
+			return
+		}
 		// Audit the manual command before executing it.
 		switch route.Command.Name {
 		case "screenshot":
 			vm.auditLog(msg.From.ID, "screenshot")
-		case "shell":
-			vm.auditLog(msg.From.ID, "shell", fmt.Sprintf(`cmd=%q`, strings.Join(route.Command.Args, " ")))
 		case "open":
 			vm.auditLog(msg.From.ID, "app_open", fmt.Sprintf(`app=%q`, strings.Join(route.Command.Args, " ")))
 		case "paste":
@@ -567,7 +588,7 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 					log.Printf("sendPhoto error: %v", err)
 				}
 			} else {
-				_ = vm.tg.EditMessage(msg.Chat.ID, workingMsgID, result.Text, nil)
+				vm.reply(msg.Chat.ID, workingMsgID, result.Text)
 			}
 		} else {
 			if result.ImageData != nil {
@@ -592,18 +613,43 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 	}
 }
 
-// handleConfirmYes executes the pending confirmed action.
+// handleConfirmYes executes the chat's pending confirmed action. The action
+// returns its own formatted reply.
 func (vm *ViewModel) handleConfirmYes(chatID int64) {
-	result, had, err := vm.guard.ConfirmPending()
+	_ = vm.tg.SendTyping(chatID)
+	result, had, err := vm.guard.ConfirmPending(chatID)
 	if !had {
-		vm.send(chatID, "No pending action to confirm.")
+		vm.send(chatID, fmt.Sprintf("No pending action to confirm (requests expire after %s).", tgfmt.Duration(safety.PendingTTL)))
 		return
 	}
 	if err != nil {
 		vm.send(chatID, tgfmt.Fail(err))
 		return
 	}
-	vm.send(chatID, tgfmt.OKWith(result))
+	if result == "" {
+		result = tgfmt.OK()
+	}
+	vm.send(chatID, result)
+}
+
+// runShell executes a shell command line for chatID. Destructive commands
+// (see safety.ClassifyCommand) are parked behind a /yes confirmation instead
+// of running straight away.
+func (vm *ViewModel) runShell(chatID, userID int64, cmdLine string) {
+	run := func() string {
+		return vm.cmdExec.Execute(&cmdmodel.Command{Name: "shell", Args: strings.Fields(cmdLine)}).Text
+	}
+	if reason, dangerous := safety.ClassifyCommand(cmdLine); dangerous {
+		vm.auditLog(userID, "shell_confirm_requested", fmt.Sprintf(`cmd=%q`, cmdLine))
+		vm.guard.SetPending(chatID, func() (string, error) {
+			vm.auditLog(userID, "shell_confirmed", fmt.Sprintf(`cmd=%q`, cmdLine))
+			return run(), nil
+		})
+		vm.send(chatID, tgfmt.ConfirmCommand(cmdLine, reason, safety.PendingTTL))
+		return
+	}
+	workingMsgID, _ := vm.sendWorking(chatID)
+	vm.reply(chatID, workingMsgID, run())
 }
 
 // runAgent executes an AI task in a goroutine, streaming progress to Telegram.
@@ -670,19 +716,11 @@ func (vm *ViewModel) runAgent(chatID int64, userID int64, task string) {
 		if ctx.Err() != nil {
 			return // user stopped the task
 		}
-		if workingMsgID > 0 {
-			_ = vm.tg.EditMessage(chatID, workingMsgID, tgfmt.Fail(err), nil)
-		} else {
-			vm.send(chatID, tgfmt.Fail(err))
-		}
+		vm.reply(chatID, workingMsgID, tgfmt.Fail(err))
 		return
 	}
 
-	if workingMsgID > 0 {
-		_ = vm.tg.EditMessage(chatID, workingMsgID, tgfmt.AgentDone(result), nil)
-	} else {
-		vm.send(chatID, tgfmt.AgentDone(result))
-	}
+	vm.reply(chatID, workingMsgID, tgfmt.AgentDone(result))
 }
 
 // waitForConfirmation registers a pending channel for chatID and blocks
@@ -727,14 +765,51 @@ func (vm *ViewModel) deliverPendingConfirmation(chatID int64, text string) bool 
 	return true
 }
 
-// send is a convenience wrapper that logs errors.
+// maxReplyParts caps how many messages one reply may fan out into, so a huge
+// file or log dump can't flood the chat.
+const maxReplyParts = 5
+
+// send delivers text to chatID, split into several messages if it is over
+// Telegram's length limit. Errors are logged.
 func (vm *ViewModel) send(chatID int64, text string) {
 	if text == "" {
 		return
 	}
-	if err := vm.tg.SendMessage(chatID, text); err != nil {
-		log.Printf("sendMessage error: %v", err)
+	vm.sendParts(chatID, replyParts(text))
+}
+
+// reply shows text in place of the "⏳ Working..." message workingMsgID (the
+// first part, if text needs splitting), or sends it as new messages when there
+// is no working message to edit.
+func (vm *ViewModel) reply(chatID int64, workingMsgID int, text string) {
+	if text == "" {
+		return
 	}
+	parts := replyParts(text)
+	if len(parts) > 0 && workingMsgID > 0 && vm.tg.EditMessage(chatID, workingMsgID, parts[0], nil) == nil {
+		parts = parts[1:]
+	}
+	vm.sendParts(chatID, parts)
+}
+
+func (vm *ViewModel) sendParts(chatID int64, parts []string) {
+	for _, part := range parts {
+		if err := vm.tg.SendMessage(chatID, part); err != nil {
+			log.Printf("sendMessage error: %v", err)
+			return // later parts would arrive out of context
+		}
+	}
+}
+
+// replyParts splits text into Telegram-sized messages, replacing everything
+// past maxReplyParts with a note saying how much was left out.
+func replyParts(text string) []string {
+	parts := tgfmt.Split(text, tgfmt.MaxMessageLen)
+	if len(parts) <= maxReplyParts {
+		return parts
+	}
+	omitted := len(parts) - (maxReplyParts - 1)
+	return append(parts[:maxReplyParts-1], fmt.Sprintf("✂️ Output truncated: %d more message(s) not shown.", omitted))
 }
 
 // sendWorking sends "⏳ Working..." immediately and returns the messageID so it can be edited later.
@@ -755,6 +830,17 @@ func (vm *ViewModel) handleCallback(cb *msgmodel.CallbackQuery) {
 	if cb.From == nil || !vm.guard.IsAllowed(cb.From.ID) {
 		return
 	}
+
+	// Buttons on earlier messages stay tappable after the session locks, so
+	// they must pass the same OTP gate as typed messages.
+	if vm.otp.LockIfIdle() {
+		vm.auditLog(cb.From.ID, "otp_idle_lock")
+	}
+	if !vm.otp.IsUnlocked() {
+		_ = vm.tg.AnswerCallbackQuery(cb.ID, "🔒 Bot is locked. Enter the OTP shown in the terminal first.")
+		return
+	}
+	vm.otp.Touch()
 
 	if strings.HasPrefix(cb.Data, "save|") {
 		vm.handleSaveCallback(cb)
@@ -797,21 +883,13 @@ func (vm *ViewModel) handleMenuCallback(cb *msgmodel.CallbackQuery) {
 		vm.auditLog(userID, "sysinfo")
 		workingMsgID, _ := vm.sendWorking(chatID)
 		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "status"})
-		if workingMsgID > 0 {
-			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
-		} else {
-			vm.send(chatID, result.Text)
-		}
+		vm.reply(chatID, workingMsgID, result.Text)
 
 	case "menu:clipboard":
 		vm.auditLog(userID, "clipboard")
 		workingMsgID, _ := vm.sendWorking(chatID)
 		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "paste"})
-		if workingMsgID > 0 {
-			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
-		} else {
-			vm.send(chatID, result.Text)
-		}
+		vm.reply(chatID, workingMsgID, result.Text)
 
 	case "menu:shell":
 		vm.auditLog(userID, "shell")
@@ -829,13 +907,7 @@ func (vm *ViewModel) handleMenuCallback(cb *msgmodel.CallbackQuery) {
 				return
 			}
 			vm.auditLog(userID, "shell", fmt.Sprintf(`cmd=%q`, reply))
-			workingMsgID, _ := vm.sendWorking(chatID)
-			result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "shell", Args: strings.Fields(reply)})
-			if workingMsgID > 0 {
-				_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
-			} else {
-				vm.send(chatID, result.Text)
-			}
+			vm.runShell(chatID, userID, reply)
 		}()
 
 	case "menu:sendfile":
@@ -857,11 +929,7 @@ func (vm *ViewModel) handleMenuCallback(cb *msgmodel.CallbackQuery) {
 		vm.auditLog(userID, "downloads")
 		workingMsgID, _ := vm.sendWorking(chatID)
 		result := vm.cmdExec.Execute(&cmdmodel.Command{Name: "ls", Args: []string{"~/Downloads"}})
-		if workingMsgID > 0 {
-			_ = vm.tg.EditMessage(chatID, workingMsgID, result.Text, nil)
-		} else {
-			vm.send(chatID, result.Text)
-		}
+		vm.reply(chatID, workingMsgID, result.Text)
 
 	case "menu:ocr":
 		vm.auditLog(userID, "ocr")
@@ -1375,14 +1443,12 @@ func (vm *ViewModel) runOCR(chatID int64) {
 	case text == "":
 		reply = "🔍 No text found on screen."
 	default:
-		reply = "🔍 Screen text:\n```\n" + text + "\n```"
+		// Messages are sent with parse_mode=HTML, so screen text containing
+		// "<" or "&" must be escaped or Telegram rejects the whole message.
+		reply = "🔍 Screen text:\n" + tgfmt.Code(text)
 	}
 
-	if workingMsgID > 0 {
-		_ = vm.tg.EditMessage(chatID, workingMsgID, reply, nil)
-	} else {
-		vm.send(chatID, reply)
-	}
+	vm.reply(chatID, workingMsgID, reply)
 }
 
 // isOCRTrigger reports whether the message text is an OCR request.
@@ -1544,4 +1610,20 @@ func rateLimitPerMinute(cfg *configmodel.Config) int {
 		return 0
 	}
 	return cfg.RateLimitPerMinute
+}
+
+// defaultIdleLock is how long an unlocked session may sit unused before it
+// locks itself again.
+const defaultIdleLock = 30 * time.Minute
+
+// idleLockTimeout resolves the idle auto-lock delay. Negative disables, zero
+// uses the default.
+func idleLockTimeout(cfg *configmodel.Config) time.Duration {
+	if cfg == nil || cfg.IdleLockMinutes == 0 {
+		return defaultIdleLock
+	}
+	if cfg.IdleLockMinutes < 0 {
+		return 0
+	}
+	return time.Duration(cfg.IdleLockMinutes) * time.Minute
 }

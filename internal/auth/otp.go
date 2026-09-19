@@ -10,19 +10,24 @@ import (
 
 // OTPGate manages a one-time password that must be entered before the bot
 // responds to any commands. The code is stored in memory only and expires
-// after 2 minutes.
+// after 2 minutes. An unlocked session can optionally lock itself again after
+// a period without activity (see SetIdleTimeout).
 type OTPGate struct {
 	mu            sync.Mutex
 	code          string
 	unlocked      bool
 	expiryTimer   *time.Timer
 	onCodeChanged func(string) // called when a new code is generated
+
+	idleTimeout  time.Duration // 0 = never lock for inactivity
+	lastActivity time.Time
+	now          func() time.Time
 }
 
 // NewOTPGate creates a new OTP gate. The caller must call StartExpiry
 // after wiring the onCodeChanged callback.
 func NewOTPGate() *OTPGate {
-	g := &OTPGate{}
+	g := &OTPGate{now: time.Now}
 	g.generateCode()
 	return g
 }
@@ -59,12 +64,54 @@ func (g *OTPGate) TryUnlock(input string) bool {
 	}
 	if input == g.code {
 		g.unlocked = true
+		g.lastActivity = g.now()
 		if g.expiryTimer != nil {
 			g.expiryTimer.Stop()
 		}
 		return true
 	}
 	return false
+}
+
+// SetIdleTimeout makes an unlocked session lock itself again once d passes
+// without activity. d <= 0 disables idle locking.
+func (g *OTPGate) SetIdleTimeout(d time.Duration) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if d < 0 {
+		d = 0
+	}
+	g.idleTimeout = d
+}
+
+// IdleTimeout returns the configured inactivity limit (0 = disabled).
+func (g *OTPGate) IdleTimeout() time.Duration {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.idleTimeout
+}
+
+// Touch records user activity, restarting the idle countdown.
+func (g *OTPGate) Touch() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.lastActivity = g.now()
+}
+
+// LockIfIdle locks the session if it is unlocked and has been inactive for
+// the idle timeout. It returns true only when this call performed the lock,
+// so the caller can tell the user why they are locked out.
+func (g *OTPGate) LockIfIdle() bool {
+	g.mu.Lock()
+	if !g.unlocked || g.idleTimeout <= 0 || g.now().Sub(g.lastActivity) < g.idleTimeout {
+		g.mu.Unlock()
+		return false
+	}
+	newCode, onChanged := g.relockLocked()
+	g.mu.Unlock()
+
+	g.announce(newCode, onChanged)
+	return true
 }
 
 // StartExpiry starts the 2-minute countdown. When the timer fires, a new code
@@ -118,12 +165,22 @@ func (g *OTPGate) PrintCurrentCode() {
 // Lock re-locks the session, generates a new OTP, prints it, and restarts the expiry timer.
 func (g *OTPGate) Lock() {
 	g.mu.Lock()
-	g.unlocked = false
-	g.generateCode()
-	newCode := g.code
-	onChanged := g.onCodeChanged
+	newCode, onChanged := g.relockLocked()
 	g.mu.Unlock()
 
+	g.announce(newCode, onChanged)
+}
+
+// relockLocked locks the session and rotates the code. Callers must hold g.mu
+// and pass the results to announce after releasing it.
+func (g *OTPGate) relockLocked() (string, func(string)) {
+	g.unlocked = false
+	g.generateCode()
+	return g.code, g.onCodeChanged
+}
+
+// announce publishes a freshly rotated code and restarts its expiry timer.
+func (g *OTPGate) announce(newCode string, onChanged func(string)) {
 	if onChanged != nil {
 		onChanged(newCode)
 	}

@@ -27,4 +27,13 @@ type Config struct {
 	// the burst budget is exhausted. Zero means use the default.
 	// Set either field to a negative value to disable rate limiting.
 	RateLimitPerMinute int `json:"rate_limit_per_minute,omitempty"`
+
+	// IdleLockMinutes re-locks an unlocked session (new OTP required) after
+	// this many minutes without messages. Zero means use the default (30);
+	// a negative value disables idle locking.
+	IdleLockMinutes int `json:"idle_lock_minutes,omitempty"`
+
+	// ShellTimeoutSeconds is how long a single shell command may run before
+	// it is killed. Zero means use the default (30s).
+	ShellTimeoutSeconds int `json:"shell_timeout_seconds,omitempty"`
 }

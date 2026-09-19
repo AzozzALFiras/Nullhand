@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -229,6 +230,13 @@ func (vm *ViewModel) shell(args []string) Result {
 	}
 	cmdLine := strings.Join(args, " ")
 	out, err := shellsvc.Run(cmdLine)
+	if errors.Is(err, shellsvc.ErrTimeout) {
+		msg := fmt.Sprintf("⏱️ Command stopped after %s (time limit).", tgfmt.Duration(shellsvc.Timeout()))
+		if out != "" {
+			msg += "\n" + tgfmt.Code(out)
+		}
+		return Result{Text: msg}
+	}
 	if err != nil {
 		if out != "" {
 			return Result{Text: "⚠️ Command exited with error:\n" + tgfmt.Code(out)}

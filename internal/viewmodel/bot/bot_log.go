@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/AzozzALFiras/Nullhand/internal/audit"
+	tgfmt "github.com/AzozzALFiras/Nullhand/internal/view/telegram"
 )
 
 // Telegram caps a single text message at ~4096 characters. We round down to
@@ -77,7 +78,7 @@ func (vm *ViewModel) replyLogSearch(chatID, userID int64, path, query string) {
 	}
 	vm.auditLog(userID, "log_search", fmt.Sprintf(`query=%q matches=%d`, query, len(lines)))
 	if len(lines) == 0 {
-		vm.send(chatID, fmt.Sprintf("🔍 No matches for %q in the last %d entries.", query, logSearchScan))
+		vm.send(chatID, tgfmt.Escape(fmt.Sprintf("🔍 No matches for %q in the last %d entries.", query, logSearchScan)))
 		return
 	}
 	header := fmt.Sprintf("🔍 %d match(es) for %q in the last %d entries:", len(lines), query, logSearchScan)
@@ -89,19 +90,29 @@ func (vm *ViewModel) replyLogSearch(chatID, userID int64, path, query string) {
 // always cares more about the most recent activity than the start of the
 // window.
 func (vm *ViewModel) sendLogReply(chatID int64, header string, lines []string) {
+	vm.send(chatID, formatLogReply(header, lines))
+}
+
+// formatLogReply renders the /log message. Lines are redacted again here so
+// secrets logged before redaction existed are still hidden, and the body is
+// HTML-escaped because messages go out with parse_mode=HTML.
+func formatLogReply(header string, lines []string) string {
 	if len(lines) == 0 {
-		vm.send(chatID, header+"\n(empty)")
-		return
+		return tgfmt.Escape(header) + "\n(empty)"
 	}
 
-	body, dropped := joinWithBudget(lines, logMaxBytes)
+	redacted := make([]string, len(lines))
+	for i, l := range lines {
+		redacted[i] = audit.Redact(l)
+	}
+	body, dropped := joinWithBudget(redacted, logMaxBytes)
 	suffix := ""
 	if dropped > 0 {
 		suffix = fmt.Sprintf("\n…(%d earlier line(s) trimmed to fit Telegram's message limit)", dropped)
 	}
 	// Code block keeps brackets/equals signs intact and gives a monospace
 	// view that matches what users see when they cat the file directly.
-	vm.send(chatID, fmt.Sprintf("%s\n```\n%s\n```%s", header, body, suffix))
+	return tgfmt.Escape(header) + "\n" + tgfmt.Code(body) + suffix
 }
 
 // joinWithBudget joins lines with newlines, dropping from the start until

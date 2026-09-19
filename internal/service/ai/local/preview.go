@@ -7,6 +7,7 @@ import (
 
 	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
 	recipemodel "github.com/AzozzALFiras/Nullhand/internal/model/recipe"
+	"github.com/AzozzALFiras/Nullhand/internal/safety"
 )
 
 // RecipeProvider is the minimal interface Preview needs to expand run_recipe
@@ -106,7 +107,11 @@ func formatCallHeader(tc aimodel.ToolCall) string {
 	case "browse_folder":
 		return fmt.Sprintf("Open file browser at %q", tc.Arguments["path"])
 	case "run_shell":
-		return fmt.Sprintf("Run shell command: %q", truncate(tc.Arguments["command"], 60))
+		line := fmt.Sprintf("Run shell command: %q", truncate(tc.Arguments["command"], 60))
+		if reason, dangerous := safety.ClassifyCommand(tc.Arguments["command"]); dangerous {
+			line += fmt.Sprintf(" — ⛔ blocked (%s); use /shell to confirm it", reason)
+		}
+		return line
 	case "read_file":
 		return fmt.Sprintf("Read file: %q", tc.Arguments["path"])
 	case "list_directory":

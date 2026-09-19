@@ -3,6 +3,7 @@ package telegram
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // OK returns a simple success reply.
@@ -66,6 +67,24 @@ func Confirm(description string) string {
 	)
 }
 
+// ConfirmCommand formats the prompt shown before a destructive shell command
+// runs.
+func ConfirmCommand(cmdLine, reason string, expiresIn time.Duration) string {
+	return fmt.Sprintf(
+		"⚠️ <b>Confirm destructive command</b>\n\n<code>%s</code>\n%s.\n\nSend /yes within %s to run it, or /no to cancel.",
+		escapeHTML(cmdLine), escapeHTML(reason), Duration(expiresIn),
+	)
+}
+
+// Duration renders d compactly for chat: whole minutes as "2 min", anything
+// else in time.Duration's own format ("45s", "1m30s").
+func Duration(d time.Duration) string {
+	if d >= time.Minute && d%time.Minute == 0 {
+		return fmt.Sprintf("%d min", d/time.Minute)
+	}
+	return d.String()
+}
+
 // Help returns the welcome + command reference shown by /start and /help.
 func Help() string {
 	return `<b>👋 Welcome to Nullhand</b>
@@ -81,7 +100,7 @@ Your invisible hand on the Linux machine.
 /open &lt;app&gt; — open an application
 /ls &lt;path&gt; — list directory
 /read &lt;path&gt; — read a file
-/shell &lt;cmd&gt; — run a whitelisted shell command
+/shell &lt;cmd&gt; — run a whitelisted shell command (destructive ones ask for /yes)
 /click &lt;x&gt; &lt;y&gt; — click at coordinates
 /type &lt;text&gt; — type text
 /key &lt;shortcut&gt; — press key (e.g. cmd+t)
@@ -107,6 +126,9 @@ func StatusReport(cpu, mem, activeApp, screenSize string) string {
 		escapeHTML(cpu), escapeHTML(mem), escapeHTML(activeApp), escapeHTML(screenSize),
 	)
 }
+
+// Escape makes arbitrary text safe to embed in an HTML-mode message.
+func Escape(s string) string { return escapeHTML(s) }
 
 // escapeHTML escapes <, >, & for Telegram HTML parse mode.
 func escapeHTML(s string) string {

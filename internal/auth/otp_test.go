@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestNewGateIsLocked(t *testing.T) {
@@ -94,5 +95,92 @@ func TestConcurrentTryUnlock(t *testing.T) {
 	wg.Wait()
 	if !g.IsUnlocked() {
 		t.Fatal("gate must end unlocked after concurrent correct attempts")
+	}
+}
+
+// unlockedGateWithClock returns an unlocked gate whose clock the test controls.
+func unlockedGateWithClock(t *testing.T, idle time.Duration) (*OTPGate, *time.Time) {
+	t.Helper()
+	clock := time.Date(2026, 9, 19, 9, 0, 0, 0, time.UTC)
+	g := NewOTPGate()
+	g.now = func() time.Time { return clock }
+	g.SetIdleTimeout(idle)
+	if !g.TryUnlock(g.CurrentCode()) {
+		t.Fatal("setup: unlock failed")
+	}
+	return g, &clock
+}
+
+func TestIdleLockDisabledWhenTimeoutIsZero(t *testing.T) {
+	g, clock := unlockedGateWithClock(t, 0)
+	*clock = clock.Add(365 * 24 * time.Hour)
+	if g.LockIfIdle() || !g.IsUnlocked() {
+		t.Fatal("with no idle timeout the session must stay unlocked")
+	}
+}
+
+func TestIdleLockAfterInactivity(t *testing.T) {
+	g, clock := unlockedGateWithClock(t, 30*time.Minute)
+	oldCode := g.CurrentCode()
+
+	*clock = clock.Add(30*time.Minute - time.Second)
+	if g.LockIfIdle() {
+		t.Fatal("must not lock before the idle timeout")
+	}
+	*clock = clock.Add(time.Second)
+	if !g.LockIfIdle() {
+		t.Fatal("must lock once the idle timeout is reached")
+	}
+	if g.IsUnlocked() {
+		t.Error("gate must be locked after an idle lock")
+	}
+	if g.CurrentCode() == oldCode {
+		t.Error("idle lock must rotate the code so the old one is useless")
+	}
+}
+
+func TestTouchRestartsIdleCountdown(t *testing.T) {
+	g, clock := unlockedGateWithClock(t, 30*time.Minute)
+
+	*clock = clock.Add(20 * time.Minute)
+	g.Touch()
+	*clock = clock.Add(20 * time.Minute) // 40 min since unlock, 20 since last activity
+	if g.LockIfIdle() {
+		t.Fatal("activity must restart the idle countdown")
+	}
+	*clock = clock.Add(10 * time.Minute)
+	if !g.LockIfIdle() {
+		t.Fatal("30 min after the last activity the session must lock")
+	}
+}
+
+func TestLockIfIdleReportsOnlyOnce(t *testing.T) {
+	g, clock := unlockedGateWithClock(t, time.Minute)
+	*clock = clock.Add(time.Hour)
+	if !g.LockIfIdle() {
+		t.Fatal("first call must perform the lock")
+	}
+	if g.LockIfIdle() {
+		t.Error("an already-locked gate must not report a second idle lock")
+	}
+}
+
+func TestIdleLockAnnouncesNewCode(t *testing.T) {
+	g, clock := unlockedGateWithClock(t, time.Minute)
+	var announced string
+	g.onCodeChanged = func(code string) { announced = code }
+
+	*clock = clock.Add(time.Hour)
+	g.LockIfIdle()
+	if announced == "" || announced != g.CurrentCode() {
+		t.Errorf("new code must be announced so it gets printed to the terminal, got %q want %q", announced, g.CurrentCode())
+	}
+}
+
+func TestSetIdleTimeoutClampsNegative(t *testing.T) {
+	g := NewOTPGate()
+	g.SetIdleTimeout(-5 * time.Minute)
+	if g.IdleTimeout() != 0 {
+		t.Errorf("negative timeout must disable idle locking, got %s", g.IdleTimeout())
 	}
 }

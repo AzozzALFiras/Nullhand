@@ -44,7 +44,8 @@ func New() (*Logger, error) {
 //
 //	[2026-04-14 22:31:05] user=123456789 action=screenshot [key="value" ...]
 //
-// extras are appended verbatim after the action field, e.g. `cmd="git status"`.
+// extras are appended after the action field, e.g. `cmd="git status"`, with
+// anything that looks like a credential replaced by Redacted (see Redact).
 // Errors are silently swallowed so a log failure never crashes the bot.
 func (l *Logger) Log(userID int64, action string, extras ...string) error {
 	ts := time.Now().Format("2006-01-02 15:04:05")
@@ -52,7 +53,7 @@ func (l *Logger) Log(userID int64, action string, extras ...string) error {
 	fmt.Fprintf(&sb, "[%s] user=%d action=%s", ts, userID, action)
 	for _, e := range extras {
 		sb.WriteByte(' ')
-		sb.WriteString(e)
+		sb.WriteString(Redact(e))
 	}
 	sb.WriteByte('\n')
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
+	"github.com/AzozzALFiras/Nullhand/internal/safety"
 	a11ysvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/accessibility"
 	appsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/apps"
 	filesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/files"
@@ -259,6 +260,12 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 
 	case "run_shell":
 		cmd := args["command"]
+		// The agent loop cannot pause for /yes, so destructive commands are
+		// refused here and the user is pointed at /shell, which asks first.
+		if reason, dangerous := safety.ClassifyCommand(cmd); dangerous {
+			msg := fmt.Sprintf("⚠️ Not run: %s. To run it anyway, send /shell %s and confirm with /yes.", reason, cmd)
+			return textParts(msg), fmt.Errorf("destructive command needs confirmation: %s", reason)
+		}
 		out, err := shellsvc.Run(cmd)
 		if err != nil {
 			msg := "⚠️ Command exited with error:\n" + err.Error()

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	filesvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/files"
+	tgfmt "github.com/AzozzALFiras/Nullhand/internal/view/telegram"
 )
 
 // openInApp opens a path in the specified application.
@@ -35,12 +36,14 @@ func (vm *ViewModel) readFile(tg TelegramSender, chatID int64, state *State, pat
 		return tg.SendMessage(chatID, fmt.Sprintf("❌ Cannot read: %v", err))
 	}
 
-	// Truncate if too long for Telegram
+	// Truncate if too long for Telegram, without splitting a multi-byte character.
 	if len(content) > 4000 {
-		content = content[:4000] + "\n\n... (truncated)"
+		content = strings.ToValidUTF8(content[:4000], "") + "\n\n... (truncated)"
 	}
 
-	return tg.SendMessage(chatID, fmt.Sprintf("📄 <b>%s</b>\n<pre>%s</pre>", shortenPath(path), content))
+	// Escape the content: a file containing "<" or "&" would otherwise make
+	// Telegram reject the HTML message.
+	return tg.SendMessage(chatID, fmt.Sprintf("📄 <b>%s</b>\n%s", shortenPath(path), tgfmt.Code(content)))
 }
 
 // copyPath copies the path to clipboard.

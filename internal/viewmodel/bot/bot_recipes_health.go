@@ -17,6 +17,7 @@ import (
 	permsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/permissions"
 	recipesvc "github.com/AzozzALFiras/Nullhand/internal/service/recipe"
 	transcribesvc "github.com/AzozzALFiras/Nullhand/internal/service/transcribe"
+	tgfmt "github.com/AzozzALFiras/Nullhand/internal/view/telegram"
 )
 
 // handleRecipesCommand processes /recipes [subcommand] [args...].
@@ -516,6 +517,11 @@ func (vm *ViewModel) formatHealth() string {
 		}
 	}
 	sb.WriteString(fmt.Sprintf("Session unlocked: %v\n", vm.otp.IsUnlocked()))
+	if idle := vm.otp.IdleTimeout(); idle > 0 {
+		sb.WriteString(fmt.Sprintf("Idle auto-lock: after %s\n", tgfmt.Duration(idle)))
+	} else {
+		sb.WriteString("Idle auto-lock: disabled\n")
+	}
 
 	return sb.String()
 }

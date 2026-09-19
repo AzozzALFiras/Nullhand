@@ -47,8 +47,11 @@ While **Nullhand** is your ultimate command center for desktop, we've built a sp
 - **App launcher** — open GNOME/GTK/Snap applications by name (Linux) or `.app` bundles (macOS)
 - **File transfer (bidirectional)** — send files from your desktop to Telegram; receive files from Telegram to disk
 - **Persistent scheduled tasks (cron-like)** — set recurring screenshots, shell commands, or system info reports; supports daily, weekday, weekend, specific days (Mon/Wed/Fri), and multiple fire times per day; survives bot restarts via `~/.nullhand/schedule.json`
-- **Audit log** — every action appended to `~/.nullhand/audit.log`
-- **OTP session lock** — cryptographically random 6-digit code, auto-rotates every 2 minutes
+- **Audit log** — every action appended to `~/.nullhand/audit.log`, with tokens, API keys and passwords masked before they reach disk
+- **OTP session lock** — cryptographically random 6-digit code, auto-rotates every 2 minutes; an unlocked session re-locks itself after 30 minutes without messages
+- **Destructive-command confirmation** — `rm`, `kill`, `git reset --hard`, `systemctl stop` and similar wait for `/yes` before running; the AI agent refuses them outright
+- **Shell time limit** — commands are stopped after 30 seconds, so `ping` or `tail -f` can't freeze the bot
+- **Long output split automatically** — replies over Telegram's 4096-character limit arrive as several messages instead of failing silently
 - **Multiple AI backends** — Claude, OpenAI, Gemini, DeepSeek, Grok, Ollama, or offline local mode
 - **Interactive file browser** — browse directories with inline keyboard navigation
 
@@ -337,7 +340,9 @@ The bot replies with a numbered plan of every tool call (and recipe step) that *
 | `/open` | `<app name>` | Open an application by name |
 | `/ls` | `[path]` | List directory contents |
 | `/read` | `<path>` | Read a file and return its contents |
-| `/shell` | `<command>` | Run a whitelisted shell command |
+| `/shell` | `<command>` | Run a whitelisted shell command (stopped after 30 s; destructive commands ask for `/yes` first) |
+| `/yes` | — | Run the destructive command waiting for confirmation (expires after 2 minutes) |
+| `/no` | — | Cancel the command waiting for confirmation |
 | `/click` | `<x> <y>` | Click at the given screen coordinates |
 | `/type` | `<text>` | Type text into the active window |
 | `/key` | `<shortcut>` | Press a key or modifier combination |
@@ -700,10 +705,22 @@ Every action is appended to `~/.nullhand/audit.log`.
 | `health` | `/health` invocation |
 | `preview` | "preview: …" / "dry-run: …" inline preview |
 | `schedule_create` | New scheduled task |
+| `schedule_confirm_requested` | Scheduling a destructive command, waiting for `/yes` |
+| `shell_confirm_requested` / `shell_confirmed` | Destructive `/shell` command held for, then approved with, `/yes` |
+| `confirm_cancelled` | Pending command discarded with `/no` |
+| `otp_idle_lock` | Session re-locked after inactivity |
 | `schedule_cancel` | Task cancelled |
 | `scheduled_task` | Scheduled task fired |
 
 The log directory (`~/.nullhand/`) is created with mode `0700`. The log file has mode `0600`. Logging failures are silently swallowed so a disk error never crashes the bot.
+
+**Secret redaction.** Before a line is written, anything that looks like a credential is replaced with `[REDACTED]`: Telegram bot tokens, `sk-…` / `ghp_…` / `xoxb-…` / `AIza…` / `AKIA…` keys, `Bearer` headers, `user:password@` in URLs, and values of keys such as `password=`, `GITHUB_TOKEN=` or `--token`. The key name is kept, so the log still shows *what* was there:
+
+```
+[2026-09-19 09:32:11] user=123456789 action=shell cmd="export GITHUB_TOKEN=[REDACTED]"
+```
+
+`/log` applies the same redaction when displaying entries, so lines written by older versions are masked too.
 
 Read the log:
 ```bash
@@ -777,6 +794,7 @@ Recipes: 27 total (24 built-in, 3 user-defined)
 
 Allowed Telegram user: 123456789
 Session unlocked: true
+Idle auto-lock: after 30 min
 ```
 
 The OCR languages line reflects what `tesseract --list-langs` returned at startup. If it shows `eng` only, install the Arabic pack to enable bilingual screen reading.
@@ -793,6 +811,30 @@ The OCR languages line reflects what `tesseract --list-langs` returned at startu
 - Stored in memory only, never written to disk or logged
 - Automatically replaced every 2 minutes (new code printed to terminal)
 - Invalidated on successful entry (cannot be reused within the same session)
+
+**Idle auto-lock.** An unlocked session locks itself again after 30 minutes without messages; the next message gets a "locked after inactivity" reply and a fresh OTP is printed to the terminal. Inline buttons on older messages go through the same gate, so a stale "📸 Screenshot" button does nothing while the bot is locked.
+
+**Destructive-command confirmation.** `/shell` commands that delete data, kill processes, change services or packages, or rewrite git history are held until you send `/yes`:
+
+```
+/shell rm -rf ~/old-builds
+
+⚠️ Confirm destructive command
+rm -rf ~/old-builds
+rm permanently deletes files.
+Send /yes within 2 min to run it, or /no to cancel.
+```
+
+The request expires after 2 minutes and belongs to the chat that made it, so another whitelisted user's `/yes` can't run it. Scheduling a destructive command (`every day at 2am run rm …`) asks for the same confirmation once, when the task is created. The AI agent can't wait for `/yes`, so it refuses these commands and tells you the `/shell` line to send instead. This is a safety net for mistakes, not a sandbox: whitelisted interpreters like `python3` can still do anything.
+
+**Shell time limit.** Every shell command is stopped after 30 seconds (the whole process group, so children die too) and output is capped at 64 KB. Without this, a command that never exits on its own — `ping host`, `top`, `tail -f` — would block the bot entirely, including `/stop`. The partial output is still sent back.
+
+**Tuning** (in `~/.nullhand/config.json`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `idle_lock_minutes` | `30` | Minutes without messages before the session re-locks. Negative disables. |
+| `shell_timeout_seconds` | `30` | Time limit for one shell command. |
 
 **X11-only.** The startup check rejects runs under Wayland (`$WAYLAND_DISPLAY` set) and headless SSH sessions (`$DISPLAY` unset).
 

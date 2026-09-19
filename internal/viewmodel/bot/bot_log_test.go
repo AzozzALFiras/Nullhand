@@ -56,3 +56,24 @@ func TestJoinWithBudgetExactFit(t *testing.T) {
 		t.Errorf("budget=6 should keep both: got=%q dropped=%d", got, dropped)
 	}
 }
+
+func TestFormatLogReplyRedactsAndEscapes(t *testing.T) {
+	lines := []string{
+		`[2026-09-19 09:00:00] user=1 action=shell cmd="export GITHUB_TOKEN=abc123def456"`,
+		`[2026-09-19 09:01:00] user=1 action=shell cmd="grep <div> index.html && echo ok"`,
+	}
+	got := formatLogReply(`🔍 2 match(es) for "<div>"`, lines)
+
+	if strings.Contains(got, "abc123def456") {
+		t.Errorf("secrets written before redaction existed must still be hidden:\n%s", got)
+	}
+	if strings.Contains(got, "<div>") {
+		t.Errorf("header and body must be HTML-escaped for parse_mode=HTML:\n%s", got)
+	}
+	if !strings.Contains(got, "&lt;div&gt;") || !strings.Contains(got, "<pre>") {
+		t.Errorf("expected an escaped <pre> block:\n%s", got)
+	}
+	if strings.Contains(got, "```") {
+		t.Errorf("Markdown fences render literally in HTML mode:\n%s", got)
+	}
+}
