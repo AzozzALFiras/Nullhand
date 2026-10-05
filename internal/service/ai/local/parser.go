@@ -10,6 +10,7 @@ import (
 	// Import all intent packages to trigger their init() registration.
 	// IMPORTANT: import order is the smart-intent matching order. List the most
 	// specific patterns first so they match before more generic ones.
+	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/mac"
 	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/settings"
 	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/buttons"
 	_ "github.com/AzozzALFiras/Nullhand/internal/service/ai/local/intents/whatsapp"

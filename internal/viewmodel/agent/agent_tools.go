@@ -397,7 +397,11 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 		}
 		return textParts("cleared focused field"), nil
 
-	default:
-		return textParts(fmt.Sprintf("unknown tool: %s", tc.ToolName)), nil
 	}
+
+	// macOS extras live in mac_tools.go.
+	if parts, err, handled := vm.executeMacTool(tc, sendPhoto); handled {
+		return parts, err
+	}
+	return textParts(fmt.Sprintf("unknown tool: %s", tc.ToolName)), nil
 }

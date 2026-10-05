@@ -108,12 +108,12 @@ func (p *Provider) SetSessionMemory(lastBrowser, lastContact, lastURL, lastQuery
 // and returns either tool calls to execute or a final text reply.
 func (p *Provider) Chat(_ context.Context, history []aimodel.Message, _ []aimodel.ToolDefinition) (*aimodel.Response, error) {
 	// If the last message is a tool result, the agent already executed our
-	// tool calls. Surface any error from the last batch; otherwise say Done.
+	// tool calls. Surface anything the user is meant to read — an error, or an
+	// answer such as the battery level — and otherwise just say Done.
 	if len(history) > 0 && history[len(history)-1].Role == aimodel.RoleTool {
 		for i := len(history) - 1; i >= 0 && history[i].Role == aimodel.RoleTool; i-- {
 			for _, p := range history[i].Parts {
-				if p.Type == aimodel.ContentTypeText &&
-					(strings.HasPrefix(p.Text, "❌") || strings.HasPrefix(p.Text, "⚠️")) {
+				if p.Type == aimodel.ContentTypeText && isUserFacing(p.Text) {
 					return &aimodel.Response{Text: p.Text, Done: true}, nil
 				}
 			}
@@ -147,4 +147,19 @@ func latestUserText(history []aimodel.Message) string {
 		}
 	}
 	return ""
+}
+
+// userFacingMarkers are the prefixes a tool uses to say "show this to the
+// user": a failure, a warning, or an informational answer.
+var userFacingMarkers = []string{"❌", "⚠️", "ℹ️"}
+
+// isUserFacing reports whether a tool result should become the bot's reply
+// rather than a bare "Done.".
+func isUserFacing(text string) bool {
+	for _, marker := range userFacingMarkers {
+		if strings.HasPrefix(text, marker) {
+			return true
+		}
+	}
+	return false
 }

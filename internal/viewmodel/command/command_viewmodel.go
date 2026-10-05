@@ -15,6 +15,7 @@ import (
 	screensvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/screen"
 	shellsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/shell"
 	systemsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/system"
+	macsvc "github.com/AzozzALFiras/Nullhand/internal/service/mac"
 	tgfmt "github.com/AzozzALFiras/Nullhand/internal/view/telegram"
 )
 
@@ -73,6 +74,31 @@ func (vm *ViewModel) Execute(cmd *cmdmodel.Command) Result {
 		return vm.diag()
 	case "inspect":
 		return vm.inspect()
+	// macOS extras (see mac_commands.go).
+	case "shortcuts", "shortcut":
+		return vm.shortcuts(cmd.Args)
+	case "volume", "vol":
+		return vm.volume(cmd.Args)
+	case "media":
+		return vm.media(cmd.Args)
+	case "say":
+		return vm.say(cmd.Args)
+	case "notify":
+		return vm.notify(cmd.Args)
+	case "find":
+		return vm.find(cmd.Args)
+	case "preview":
+		return vm.preview(cmd.Args)
+	case "battery":
+		return vm.battery()
+	case "lock":
+		return vm.lockScreen()
+	case "sleep":
+		return vm.sleepMac()
+	case "awake":
+		return vm.awake(cmd.Args)
+	case "dark":
+		return vm.darkMode(cmd.Args)
 	default:
 		return Result{Text: fmt.Sprintf("Unknown command: /%s", cmd.Name)}
 	}
@@ -336,9 +362,14 @@ func (vm *ViewModel) status() Result {
 	return Result{Text: tgfmt.StatusReport(cpu, mem, activeApp, screenSize)}
 }
 
-// help returns the welcome + command list for /start and /help.
+// help returns the welcome + command list for /start and /help. The macOS
+// block is appended only where those commands actually work.
 func (vm *ViewModel) help() Result {
-	return Result{Text: tgfmt.Help()}
+	text := tgfmt.Help()
+	if macsvc.Available() {
+		text += "\n\n" + tgfmt.MacHelp()
+	}
+	return Result{Text: text}
 }
 
 // ---- helpers ----

@@ -45,6 +45,7 @@ While **Nullhand** is your ultimate command center for desktop, we've built a sp
 - **Mouse & keyboard automation** — click, double-click, right-click, drag, scroll, type, key shortcuts, clear field
 - **Accessibility-aware element control** — click UI elements by exact label, fuzzy substring match, or OCR fallback for Electron apps
 - **App launcher** — open GNOME/GTK/Snap applications by name (Linux) or `.app` bundles (macOS)
+- **macOS extras** — run Shortcuts, control volume and Music/Spotify, Spotlight file search with Quick Look previews, battery and power control, dark mode, and speech or notifications on the Mac's screen (see [macOS Extras](#macos-extras))
 - **File transfer (bidirectional)** — send files from your desktop to Telegram; receive files from Telegram to disk
 - **Persistent scheduled tasks (cron-like)** — set recurring screenshots, shell commands, or system info reports; supports daily, weekday, weekend, specific days (Mon/Wed/Fri), and multiple fire times per day; survives bot restarts via `~/.nullhand/schedule.json`
 - **Audit log** — every action appended to `~/.nullhand/audit.log`, with tokens, API keys and passwords masked before they reach disk
@@ -246,6 +247,26 @@ run git status in terminal
 send me /home/user/report.pdf
 ```
 
+**macOS only** — see [macOS Extras](#macos-extras) for the full list
+```
+battery
+volume 30
+mute
+what's playing
+next track
+run shortcut Good Morning
+find invoice.pdf
+say dinner is ready
+lock
+dark mode
+كم البطارية
+ارفع الصوت
+شغل اختصار تشغيل الاضاءة
+ابحث عن ملف الفاتورة
+قل الغداء جاهز
+اقفل الشاشة
+```
+
 **Browser navigation** — opens the browser, waits for the window, clears the address bar, types the URL, and hits Enter
 ```
 open firefox and go to github.com
@@ -355,6 +376,20 @@ The bot replies with a numbered plan of every tool call (and recipe step) that *
 | `/recipes` | — \| `<name>` \| `show <name>` \| `run <name> [k=v ...]` \| `preview <name> [k=v ...]` \| `delete <name>` \| `rename <old> <new>` | Browse and manage built-in + user-saved recipes |
 | `/health` | — | System health: OS, AI provider, OCR languages, permissions, scheduled tasks count, recipes count |
 | `/menu` | — | Open the inline quick-action toolbar |
+| `/shortcuts` | — \| `run <name> [-- <input>]` | 🍎 List or run macOS Shortcuts |
+| `/volume` | — \| `0-100` \| `+10` \| `-10` \| `up` \| `down` \| `mute` \| `unmute` | 🍎 System output volume |
+| `/media` | `info` \| `play` \| `pause` \| `next` \| `prev` | 🍎 Control Music or Spotify |
+| `/find` | `<name>` [`in <folder>`] | 🍎 Spotlight file search (falls back to a file walk) |
+| `/preview` | `<path>` | 🍎 Send a Quick Look image of a file |
+| `/battery` | — | 🍎 Charge level, state, time remaining |
+| `/lock` | — | 🍎 Lock the screen |
+| `/sleep` | — | 🍎 Put the Mac to sleep |
+| `/awake` | — \| `90` \| `90m` \| `2h` \| `off` | 🍎 Keep the Mac awake (caffeinate) |
+| `/dark` | — \| `on` \| `off` \| `status` | 🍎 Switch the system appearance |
+| `/say` | `<text>` | 🍎 Speak text out loud on the Mac |
+| `/notify` | `<text>` | 🍎 Show a notification on the Mac's screen |
+
+🍎 = macOS only. On Linux these reply with a short "macOS only" note, and they are hidden from Telegram's command menu.
 
 **Keyboard shortcut examples for `/key`:**
 
@@ -795,9 +830,120 @@ Recipes: 27 total (24 built-in, 3 user-defined)
 Allowed Telegram user: 123456789
 Session unlocked: true
 Idle auto-lock: after 30 min
+
+macOS extras:
+  ✅ Shortcuts (/shortcuts)
+  ✅ Quick Look previews (/preview)
+  ✅ Spotlight search (/find)
+  ✅ Keep awake (/awake)
+  ✅ Speech (/say)
+  ✅ Spotlight index: enabled
 ```
 
 The OCR languages line reflects what `tesseract --list-langs` returned at startup. If it shows `eng` only, install the Arabic pack to enable bilingual screen reading.
+
+---
+
+## macOS Extras
+
+On macOS, Nullhand exposes the things that make a Mac a Mac. Everything here
+uses built-in tools — no Homebrew packages required.
+
+### Shortcuts
+
+Anything you can build in the Shortcuts app becomes a bot command: HomeKit
+scenes, system toggles, multi-step automations.
+
+```
+/shortcuts                                  # list the Shortcuts on this Mac
+/shortcuts run Good Morning                 # run one by name
+/shortcuts run Add Note -- buy milk         # pass text as the Shortcut's input
+run shortcut Good Morning                   # natural language
+شغل اختصار تشغيل الاضاءة
+```
+
+Text the Shortcut returns is sent back to the chat. Names with spaces work as
+typed; `--` separates the name from the input.
+
+### Audio & media
+
+```
+/volume            # 🔊 Volume 44%
+/volume 30
+/volume up         # ±10 points
+/volume mute
+/media info        # ▶️ Song — Artist (Music, playing)
+/media next
+ارفع الصوت
+```
+
+Media commands drive **Spotify** if it is running, otherwise **Music**. Asking
+for a track never launches an app on its own, but `/media play` with nothing
+running starts Music first. Setting a level also unmutes — a raised volume that
+stays silent looks broken.
+
+### Spotlight search & Quick Look
+
+```
+/find invoice.pdf
+/find report in ~/Documents
+/preview ~/Desktop/plan.pdf        # Quick Look rendered as a photo
+```
+
+`/find` asks Spotlight first and falls back to a bounded `find` walk when the
+folder is not indexed — on an unindexed or privacy-excluded folder Spotlight
+returns nothing at all, which would otherwise read as "no such file". `/health`
+shows whether the index is enabled.
+
+`/preview` renders anything Quick Look can preview (PDF, image, document,
+source file) as a PNG and sends it as a photo, so you can check a file before
+asking for the file itself.
+
+### Power & appearance
+
+```
+/battery           # 🔋 95% — AC attached
+/lock              # Cmd+Ctrl+Q, falls back to sleeping the display
+/sleep
+/awake 90m         # caffeinate for 90 minutes
+/awake             # how much keep-awake time is left
+/awake off
+/dark              # toggle; /dark on, /dark off, /dark status
+```
+
+### Speech & notifications
+
+```
+/say the build is done        # spoken through the Mac's speakers
+/notify deploy finished       # notification banner on the Mac
+قل الغداء جاهز
+```
+
+`/say` is capped at 500 characters and runs detached, so a long text never
+blocks the bot. The first `/notify` may need notification permission for
+whatever runs the bot (Terminal, iTerm, the binary itself); macOS asks once.
+
+### Requirements
+
+| Feature | Needs |
+|---|---|
+| Shortcuts | `shortcuts` (macOS 12+) |
+| Volume, media, dark mode, lock | `osascript`, plus Automation permission for System Events and the media app |
+| Spotlight search | `mdfind` (built in); `find` fallback needs nothing |
+| Quick Look previews | `qlmanage` (built in) |
+| Keep awake | `caffeinate` (built in) |
+| Speech | `say` (built in) |
+
+`/health` lists each of these with a ✅ or ❌ plus the Spotlight index state.
+
+### AI agent tools
+
+In AI agent mode the same capabilities are exposed as tools — `run_shortcut`,
+`list_shortcuts`, `control_audio`, `control_media`, `say_text`,
+`show_notification`, `find_files`, `preview_file` and `mac_power` — so a cloud
+model can combine them ("if the battery is under 20%, tell me out loud"). They
+are only offered to the model on macOS, so a Linux run neither pays for the
+tokens nor sees tools it cannot use.
 
 ---
 

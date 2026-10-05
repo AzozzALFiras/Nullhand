@@ -106,6 +106,32 @@ func formatCallHeader(tc aimodel.ToolCall) string {
 		return "Take a screenshot and send to you"
 	case "browse_folder":
 		return fmt.Sprintf("Open file browser at %q", tc.Arguments["path"])
+	// macOS extras.
+	case "list_shortcuts":
+		return "List the macOS Shortcuts on this Mac"
+	case "run_shortcut":
+		return fmt.Sprintf("Run macOS Shortcut %q", tc.Arguments["name"])
+	case "control_audio":
+		if tc.Arguments["action"] == "set" {
+			return fmt.Sprintf("Set system volume to %s%%", tc.Arguments["percent"])
+		}
+		return fmt.Sprintf("Volume: %s", tc.Arguments["action"])
+	case "control_media":
+		return fmt.Sprintf("Music/Spotify: %s", tc.Arguments["action"])
+	case "say_text":
+		return fmt.Sprintf("Speak out loud on the Mac: %q", truncate(tc.Arguments["text"], 60))
+	case "show_notification":
+		return fmt.Sprintf("Show a Mac notification: %q", truncate(tc.Arguments["text"], 60))
+	case "find_files":
+		if folder := tc.Arguments["folder"]; folder != "" {
+			return fmt.Sprintf("Search for files named %q in %s", tc.Arguments["query"], folder)
+		}
+		return fmt.Sprintf("Search for files named %q", tc.Arguments["query"])
+	case "preview_file":
+		return fmt.Sprintf("Send a Quick Look preview of %q", tc.Arguments["path"])
+	case "mac_power":
+		return fmt.Sprintf("Mac power/appearance: %s", tc.Arguments["action"])
+
 	case "run_shell":
 		line := fmt.Sprintf("Run shell command: %q", truncate(tc.Arguments["command"], 60))
 		if reason, dangerous := safety.ClassifyCommand(tc.Arguments["command"]); dangerous {

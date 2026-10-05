@@ -34,6 +34,7 @@ import (
 	ocrsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/ocr"
 	screensvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/screen"
 	shellsvc "github.com/AzozzALFiras/Nullhand/internal/service/linux/shell"
+	macsvc "github.com/AzozzALFiras/Nullhand/internal/service/mac"
 	recipesvc "github.com/AzozzALFiras/Nullhand/internal/service/recipe"
 	tgsvc "github.com/AzozzALFiras/Nullhand/internal/service/telegram"
 	transcribesvc "github.com/AzozzALFiras/Nullhand/internal/service/transcribe"
@@ -164,7 +165,7 @@ func (vm *ViewModel) Start() {
 
 // defaultMenu is the list of commands shown in the Telegram UI menu.
 func defaultMenu() []tgsvc.BotCommand {
-	return []tgsvc.BotCommand{
+	commands := []tgsvc.BotCommand{
 		{Command: "help", Description: "Show help message"},
 		{Command: "screenshot", Description: "Capture the screen"},
 		{Command: "status", Description: "CPU, memory, active app"},
@@ -185,6 +186,26 @@ func defaultMenu() []tgsvc.BotCommand {
 		{Command: "log", Description: "Show audit log tail (e.g. /log 20, /log search whatsapp)"},
 		{Command: "menu", Description: "Show quick action toolbar"},
 		{Command: "stop", Description: "Stop current AI task"},
+	}
+	// Only advertise the macOS extras where they work.
+	if macsvc.Available() {
+		commands = append(commands, macMenu()...)
+	}
+	return commands
+}
+
+// macMenu lists the macOS-only commands worth a slot in Telegram's command
+// menu. The rest stay discoverable through /help.
+func macMenu() []tgsvc.BotCommand {
+	return []tgsvc.BotCommand{
+		{Command: "shortcuts", Description: "Run a macOS Shortcut"},
+		{Command: "volume", Description: "System volume (0-100, up, down, mute)"},
+		{Command: "media", Description: "Music / Spotify: info, play, pause, next"},
+		{Command: "find", Description: "Spotlight file search"},
+		{Command: "preview", Description: "Quick Look preview of a file"},
+		{Command: "battery", Description: "Battery level and time left"},
+		{Command: "say", Description: "Speak text out loud on the Mac"},
+		{Command: "lock", Description: "Lock the screen"},
 	}
 }
 
@@ -322,8 +343,12 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 	}
 
 	// File send detection for natural language ("send me /path", "upload /path", etc).
+	// Slash commands are excluded: /preview, /find and /shell all take paths
+	// that may contain the word "send" (/var/log/sendmail.log), and they must
+	// reach their own handler rather than the file sender.
 	textLower := strings.ToLower(strings.TrimSpace(msg.Text))
-	if (strings.Contains(textLower, "send") || strings.Contains(textLower, "upload")) && strings.Contains(msg.Text, "/") {
+	if !strings.HasPrefix(textLower, "/") &&
+		(strings.Contains(textLower, "send") || strings.Contains(textLower, "upload")) && strings.Contains(msg.Text, "/") {
 		parts := strings.Fields(msg.Text)
 		for _, p := range parts {
 			if strings.HasPrefix(p, "/") {

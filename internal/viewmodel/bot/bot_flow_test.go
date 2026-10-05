@@ -290,3 +290,18 @@ func TestFlowAuditLogRedactsSecrets(t *testing.T) {
 		t.Errorf("/log must show redacted entries in an HTML code block, got %q", msg)
 	}
 }
+
+// A slash command whose argument happens to contain "send" must reach its own
+// handler instead of the natural-language file sender.
+func TestFlowSlashCommandWithSendInPathIsNotHijacked(t *testing.T) {
+	vm, fake := newUnlockedBot(t)
+	vm.handleUpdate(textUpdate("/shell echo /var/log/sendmail.log"))
+
+	msg := fake.lastText(t)
+	if !strings.Contains(msg, "/var/log/sendmail.log") {
+		t.Errorf("the shell command should have run, got %q", msg)
+	}
+	if strings.Contains(msg, "Failed to send") || strings.Contains(msg, "no such file") {
+		t.Errorf("message was routed to the file sender: %q", msg)
+	}
+}

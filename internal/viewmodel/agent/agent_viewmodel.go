@@ -9,6 +9,7 @@ import (
 
 	aimodel "github.com/AzozzALFiras/Nullhand/internal/model/ai"
 	aisvc "github.com/AzozzALFiras/Nullhand/internal/service/ai"
+	macsvc "github.com/AzozzALFiras/Nullhand/internal/service/mac"
 	recipesvc "github.com/AzozzALFiras/Nullhand/internal/service/recipe"
 )
 
@@ -504,6 +505,11 @@ func (vm *ViewModel) buildToolDefinitions() []aimodel.ToolDefinition {
 			Name:        "clear_field",
 			Description: "Select all (Ctrl+A) and delete contents of the currently focused text field. Useful before typing a URL into the address bar.",
 		},
+	}
+
+	// macOS extras — only offered where they can actually run.
+	if macsvc.Available() {
+		tools = append(tools, macToolDefinitions()...)
 	}
 
 	// Vision tool — only available when the AI provider supports images.

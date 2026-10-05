@@ -119,6 +119,21 @@ Just type a task in plain English or Arabic. Example:
 Tip: use /screenshot often — it is your eyes on the Linux machine.`
 }
 
+// MacHelp lists the macOS-only commands. It is appended to Help() on macOS.
+func MacHelp() string {
+	return `<b>🍎 macOS extras:</b>
+/shortcuts — list Shortcuts; /shortcuts run &lt;name&gt; to run one
+/volume &lt;0-100|up|down|mute&gt; — system volume
+/media &lt;info|play|pause|next|prev&gt; — Music / Spotify
+/find &lt;name&gt; [in &lt;folder&gt;] — Spotlight file search
+/preview &lt;path&gt; — Quick Look image of a file
+/battery — charge level and time left
+/say &lt;text&gt; — speak out loud on the Mac
+/notify &lt;text&gt; — show a notification on the Mac
+/dark [on|off] — switch appearance
+/lock, /sleep, /awake &lt;90m|off&gt; — screen and power`
+}
+
 // StatusReport formats a system status reply.
 func StatusReport(cpu, mem, activeApp, screenSize string) string {
 	return fmt.Sprintf(
