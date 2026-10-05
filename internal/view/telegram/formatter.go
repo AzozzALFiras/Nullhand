@@ -130,6 +130,9 @@ func MacHelp() string {
 /battery — charge level and time left
 /say &lt;text&gt; — speak out loud on the Mac
 /notify &lt;text&gt; — show a notification on the Mac
+/info &lt;path&gt; — kind, size, dates
+/reveal &lt;path&gt; — select the item in Finder
+/trash [&lt;path&gt;] — move to Trash, or empty it (asks for /yes)
 /dark [on|off] — switch appearance
 /lock, /sleep, /awake &lt;90m|off&gt; — screen and power`
 }

@@ -327,3 +327,56 @@ func (vm *ViewModel) darkMode(args []string) Result {
 	}
 	return Result{Text: "☀️ Dark mode is off."}
 }
+
+// ---- Finder ----
+
+func (vm *ViewModel) reveal(args []string) Result {
+	path := strings.TrimSpace(strings.Join(args, " "))
+	if path == "" {
+		return Result{Text: "Usage: /reveal `path to a file or folder`"}
+	}
+	if !macsvc.Available() {
+		return notOnMac("/reveal")
+	}
+	if err := macsvc.Reveal(path); err != nil {
+		return Result{Text: tgfmt.FailWith("reveal", err)}
+	}
+	return Result{Text: "📂 Selected in Finder: " + tgfmt.Escape(path)}
+}
+
+func (vm *ViewModel) fileInfo(args []string) Result {
+	path := strings.TrimSpace(strings.Join(args, " "))
+	if path == "" {
+		return Result{Text: "Usage: /info `path to a file or folder`"}
+	}
+	if !macsvc.Available() {
+		return notOnMac("/info")
+	}
+	info, err := macsvc.Info(path)
+	if err != nil {
+		return Result{Text: tgfmt.FailWith("info", err)}
+	}
+	return Result{Text: tgfmt.Escape(info.Summary())}
+}
+
+// trash moves an item to the Trash, which is recoverable and therefore needs
+// no confirmation. Emptying the Trash is not recoverable, so "/trash" with no
+// path is intercepted by the bot, which asks for /yes first; reaching here
+// without a path only reports what is in there.
+func (vm *ViewModel) trash(args []string) Result {
+	if !macsvc.Available() {
+		return notOnMac("/trash")
+	}
+	path := strings.TrimSpace(strings.Join(args, " "))
+	if path == "" {
+		state, err := macsvc.TrashStatus()
+		if err != nil {
+			return Result{Text: tgfmt.FailWith("trash", err)}
+		}
+		return Result{Text: state.Summary()}
+	}
+	if err := macsvc.MoveToTrash(path); err != nil {
+		return Result{Text: tgfmt.FailWith("trash", err)}
+	}
+	return Result{Text: "🗑 Moved to the Trash: " + tgfmt.Escape(path) + "\nRecover it from Finder if you need it back."}
+}

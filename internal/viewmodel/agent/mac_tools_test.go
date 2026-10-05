@@ -23,6 +23,10 @@ func TestMacToolsRejectBadArguments(t *testing.T) {
 		{"audio with unknown action", macCall("control_audio", map[string]string{"action": "eject"})},
 		{"audio set without number", macCall("control_audio", map[string]string{"action": "set", "percent": "loud"})},
 		{"power with unknown action", macCall("mac_power", map[string]string{"action": "explode"})},
+		{"reveal without path", macCall("reveal_in_finder", map[string]string{})},
+		{"file_info without path", macCall("file_info", map[string]string{})},
+		{"trash move without path", macCall("manage_trash", map[string]string{"action": "move"})},
+		{"trash with unknown action", macCall("manage_trash", map[string]string{"action": "burn"})},
 	}
 	for _, c := range cases {
 		parts, err, handled := vm.executeMacTool(c.call, nil)
@@ -79,9 +83,25 @@ func TestMacToolDefinitionsAreUsable(t *testing.T) {
 	for _, required := range []string{
 		"run_shortcut", "list_shortcuts", "control_audio", "control_media",
 		"say_text", "show_notification", "mac_power",
+		"reveal_in_finder", "file_info", "manage_trash",
 	} {
 		if !seen[required] {
 			t.Errorf("missing tool definition %q", required)
 		}
+	}
+}
+
+// Emptying the Trash is irreversible, so the agent may not do it: it has to
+// hand the user back to the /trash + /yes flow where they see what is at
+// stake first.
+func TestManageTrashRefusesToEmpty(t *testing.T) {
+	vm := &ViewModel{}
+	parts, err, handled := vm.executeMacTool(macCall("manage_trash", map[string]string{"action": "empty"}), nil)
+	if !handled || err == nil {
+		t.Fatalf("emptying must be refused: handled=%v err=%v", handled, err)
+	}
+	text := partsText(parts)
+	if !strings.Contains(text, "/trash") || !strings.Contains(text, "/yes") {
+		t.Errorf("the refusal should point at the confirmed flow, got %q", text)
 	}
 }

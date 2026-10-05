@@ -30,4 +30,9 @@ func KeepAwakeUntil() (time.Time, bool)              { return time.Time{}, false
 func DarkMode() (bool, error)                        { return false, ErrUnsupported }
 func SetDarkMode(on bool) error                      { return ErrUnsupported }
 func ToggleDarkMode() (bool, error)                  { return false, ErrUnsupported }
+func Reveal(path string) error                       { return ErrUnsupported }
+func Info(path string) (FileInfo, error)             { return FileInfo{}, ErrUnsupported }
+func TrashStatus() (TrashState, error)               { return TrashState{}, ErrUnsupported }
+func EmptyTrash() error                              { return ErrUnsupported }
+func MoveToTrash(path string) error                  { return ErrUnsupported }
 func HealthLines() []string                          { return nil }

@@ -205,6 +205,8 @@ func macMenu() []tgsvc.BotCommand {
 		{Command: "media", Description: "Music / Spotify: info, play, pause, next"},
 		{Command: "battery", Description: "Battery level and time left"},
 		{Command: "say", Description: "Speak text out loud on the Mac"},
+		{Command: "info", Description: "File or folder details (kind, size, dates)"},
+		{Command: "trash", Description: "Move a file to the Trash, or empty it"},
 		{Command: "lock", Description: "Lock the screen"},
 	}
 }
@@ -583,6 +585,13 @@ func (vm *ViewModel) handleUpdate(update msgmodel.Update) {
 			if err := SendMenu(vm.tg, msg.Chat.ID); err != nil {
 				vm.send(msg.Chat.ID, "❌ Failed to send menu")
 			}
+			return
+		}
+		// Emptying the Trash cannot be undone, so it goes through the same
+		// /yes confirmation as a destructive shell command.
+		if route.Command.Name == "trash" && len(route.Command.Args) == 0 && macsvc.Available() {
+			vm.auditLog(msg.From.ID, "trash")
+			vm.handleTrashCommand(msg.Chat.ID, msg.From.ID)
 			return
 		}
 		if route.Command.Name == "shell" {

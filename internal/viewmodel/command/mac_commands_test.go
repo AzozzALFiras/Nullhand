@@ -98,6 +98,8 @@ func TestMacCommandsValidateBeforePlatform(t *testing.T) {
 		{"/shortcuts run", vm.shortcuts([]string{"run"})},
 		{"/awake soon", vm.awake([]string{"soon"})},
 		{"/dark bogus", vm.darkMode([]string{"bogus"})},
+		{"/reveal", vm.reveal(nil)},
+		{"/info", vm.fileInfo(nil)},
 	}
 	for _, c := range cases {
 		if !strings.Contains(c.result.Text, "Usage:") {

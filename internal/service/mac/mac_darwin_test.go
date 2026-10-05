@@ -4,6 +4,8 @@ package mac
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -121,5 +123,89 @@ func TestHealthLinesDescribeTooling(t *testing.T) {
 		if !strings.Contains(lines, want) {
 			t.Errorf("health output missing %q:\n%s", want, lines)
 		}
+	}
+}
+
+func TestInfoDescribesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(path, []byte("hello nullhand"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := Info(path)
+	if err != nil {
+		t.Fatalf("Info: %v", err)
+	}
+	if info.Name != "note.txt" || info.IsDir {
+		t.Errorf("got %+v", info)
+	}
+	if info.Size != 14 {
+		t.Errorf("size = %d, want 14", info.Size)
+	}
+	if info.Modified.IsZero() || info.Created.IsZero() {
+		t.Errorf("both timestamps should be filled on macOS: %+v", info)
+	}
+	if info.Summary() == "" {
+		t.Error("Summary must always render something for /info")
+	}
+}
+
+func TestInfoDescribesFolder(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("12345"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	info, err := Info(dir)
+	if err != nil {
+		t.Fatalf("Info: %v", err)
+	}
+	if !info.IsDir {
+		t.Fatal("expected a folder")
+	}
+	if info.Items != 3 {
+		t.Errorf("items = %d, want 3", info.Items)
+	}
+	// du reports allocated blocks, so the total is at least the content size.
+	if info.Size <= 0 {
+		t.Errorf("folder size should be totalled, got %d", info.Size)
+	}
+}
+
+func TestInfoRejectsMissingFile(t *testing.T) {
+	if _, err := Info(filepath.Join(t.TempDir(), "nope")); err == nil {
+		t.Error("a missing path must return an error")
+	}
+}
+
+func TestTrashStatusReads(t *testing.T) {
+	state, err := TrashStatus()
+	if err != nil {
+		if strings.Contains(err.Error(), "not authorized") || strings.Contains(err.Error(), "-1743") {
+			t.Skipf("Automation permission for Finder not granted: %v", err)
+		}
+		t.Fatalf("TrashStatus: %v", err)
+	}
+	if state.Items < 0 || state.Size < 0 {
+		t.Errorf("implausible trash state %+v", state)
+	}
+	if state.Summary() == "" {
+		t.Error("Summary must always render something for /trash")
+	}
+}
+
+// Reveal and MoveToTrash are not exercised against real files here: one opens
+// a Finder window on the user's screen, the other puts things in their Trash.
+func TestFinderActionsValidatePaths(t *testing.T) {
+	if err := Reveal(""); err == nil {
+		t.Error("an empty path must be refused before Finder is asked")
+	}
+	if err := Reveal(filepath.Join(t.TempDir(), "nope")); err == nil {
+		t.Error("a missing path must be refused")
+	}
+	if err := MoveToTrash(filepath.Join(t.TempDir(), "nope")); err == nil {
+		t.Error("a missing path must be refused before Finder is asked")
 	}
 }

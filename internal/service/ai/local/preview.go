@@ -129,6 +129,15 @@ func formatCallHeader(tc aimodel.ToolCall) string {
 		return fmt.Sprintf("Search for files named %q", tc.Arguments["query"])
 	case "preview_file":
 		return fmt.Sprintf("Send a Quick Look preview of %q", tc.Arguments["path"])
+	case "reveal_in_finder":
+		return fmt.Sprintf("Reveal %q in Finder", tc.Arguments["path"])
+	case "file_info":
+		return fmt.Sprintf("Describe file %q", tc.Arguments["path"])
+	case "manage_trash":
+		if tc.Arguments["action"] == "move" {
+			return fmt.Sprintf("Move %q to the Trash", tc.Arguments["path"])
+		}
+		return "Report what is in the Trash"
 	case "mac_power":
 		return fmt.Sprintf("Mac power/appearance: %s", tc.Arguments["action"])
 

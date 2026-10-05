@@ -250,3 +250,76 @@ func TestIsPlayCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestHumanBytes(t *testing.T) {
+	for in, want := range map[int64]string{
+		0:        "0 B",
+		512:      "512 B",
+		1536:     "1.5 KB",
+		1 << 20:  "1.0 MB",
+		12 << 20: "12 MB",
+		5 << 30:  "5.0 GB",
+		2 << 40:  "2.0 TB",
+	} {
+		if got := humanBytes(in); got != want {
+			t.Errorf("humanBytes(%d) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseDuKilobytes(t *testing.T) {
+	got, err := parseDuKilobytes("12345\t/Users/me/.Trash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := int64(12345 * 1024); got != want {
+		t.Errorf("got %d bytes, want %d", got, want)
+	}
+	if _, err := parseDuKilobytes("du: cannot read"); err == nil {
+		t.Error("unparseable du output must return an error")
+	}
+}
+
+func TestFileInfoSummary(t *testing.T) {
+	modified := time.Date(2026, 10, 6, 1, 30, 0, 0, time.UTC)
+	file := FileInfo{
+		Path: "/Users/me/Documents/report.pdf", Name: "report.pdf",
+		Size: 1 << 20, Kind: "PDF document", Modified: modified,
+	}
+	got := file.Summary()
+	for _, want := range []string{"report.pdf", "PDF document", "1.0 MB", "2026-10-06 01:30", "/Users/me/Documents/report.pdf"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary %q is missing %q", got, want)
+		}
+	}
+	// Markup belongs to the view layer: the agent path escapes tool output,
+	// so a summary carrying tags would show them literally.
+	if strings.Contains(got, "<") {
+		t.Errorf("summary must be plain text, got %q", got)
+	}
+
+	folder := FileInfo{Path: "/Users/me/Documents", Name: "Documents", IsDir: true, Items: 34, Size: 5 << 30, Modified: modified}
+	got = folder.Summary()
+	for _, want := range []string{"📁", "Folder", "34 item(s)", "5.0 GB"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("folder summary %q is missing %q", got, want)
+		}
+	}
+}
+
+func TestTrashStateSummary(t *testing.T) {
+	if got := (TrashState{}).Summary(); !strings.Contains(got, "empty") {
+		t.Errorf("got %q", got)
+	}
+	full := TrashState{Items: 12, Size: 340 << 20}
+	if got := full.Summary(); !strings.Contains(got, "12 item(s)") || !strings.Contains(got, "340 MB") {
+		t.Errorf("got %q", got)
+	}
+	if got := full.Describe(); strings.Contains(got, "🗑") {
+		t.Errorf("Describe is for embedding in a sentence, got %q", got)
+	}
+	// An unmeasurable size (no Full Disk Access) still has a usable count.
+	if got := (TrashState{Items: 3}).Describe(); got != "3 item(s)" {
+		t.Errorf("got %q, want %q", got, "3 item(s)")
+	}
+}

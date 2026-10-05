@@ -56,6 +56,18 @@ func TestParserMacIntents(t *testing.T) {
 		{"ابحث عن ملف الفاتورة", "find_files", "query", "الفاتورة"},
 		{"preview ~/Desktop/plan.pdf", "preview_file", "path", "~/Desktop/plan.pdf"},
 
+		// ── Finder ────────────────────────────────────────────────
+		{"reveal ~/Documents/report.pdf", "reveal_in_finder", "path", "~/Documents/report.pdf"},
+		{"show in finder /etc/hosts", "reveal_in_finder", "path", "/etc/hosts"},
+		{"اظهر في الفايندر ~/Desktop", "reveal_in_finder", "path", "~/Desktop"},
+		{"info ~/Documents/report.pdf", "file_info", "path", "~/Documents/report.pdf"},
+		{"file info notes.txt", "file_info", "path", "notes.txt"},
+		{"معلومات الملف ~/notes.txt", "file_info", "path", "~/notes.txt"},
+		{"trash", "manage_trash", "action", "status"},
+		{"المهملات", "manage_trash", "action", "status"},
+		{"trash ~/Downloads/old.zip", "manage_trash", "path", "~/Downloads/old.zip"},
+		{"انقل الى المهملات ~/Downloads/old.zip", "manage_trash", "action", "move"},
+
 		// ── Power & appearance ────────────────────────────────────
 		{"battery", "mac_power", "action", "battery"},
 		{"كم البطارية", "mac_power", "action", "battery"},
@@ -140,6 +152,17 @@ func TestPreviewDescribesMacTools(t *testing.T) {
 		got := Preview(input, nil)
 		if !strings.Contains(got, want) {
 			t.Errorf("preview of %q should mention %q, got:\n%s", input, want, got)
+		}
+	}
+}
+
+// "info" on its own is a system-status request, not a file description.
+func TestParserMacFileInfoNeedsAPathLikeArgument(t *testing.T) {
+	for _, sentence := range []string{"info", "info about the system"} {
+		for _, call := range Parse(sentence) {
+			if call.ToolName == "file_info" {
+				t.Errorf("%q should not be read as a file description", sentence)
+			}
 		}
 	}
 }

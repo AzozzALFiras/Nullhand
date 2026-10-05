@@ -99,6 +99,12 @@ func (vm *ViewModel) Execute(cmd *cmdmodel.Command) Result {
 		return vm.awake(cmd.Args)
 	case "dark":
 		return vm.darkMode(cmd.Args)
+	case "reveal":
+		return vm.reveal(cmd.Args)
+	case "info":
+		return vm.fileInfo(cmd.Args)
+	case "trash":
+		return vm.trash(cmd.Args)
 	default:
 		return Result{Text: fmt.Sprintf("Unknown command: /%s", cmd.Name)}
 	}

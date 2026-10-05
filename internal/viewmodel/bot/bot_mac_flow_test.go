@@ -122,3 +122,45 @@ func TestMacMenuIsAdvertised(t *testing.T) {
 		}
 	}
 }
+
+func TestMacFlowInfoCommand(t *testing.T) {
+	vm, fake := newUnlockedBot(t)
+	path := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(path, []byte("hello nullhand"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	vm.handleUpdate(textUpdate("/info " + path))
+
+	msg := fake.lastText(t)
+	if !strings.Contains(msg, "note.txt") || !strings.Contains(msg, "14 B") {
+		t.Errorf("/info should describe the file, got %q", msg)
+	}
+}
+
+// Emptying the Trash must wait for /yes, exactly like a destructive shell
+// command. This test never confirms — it cancels with /no.
+func TestMacFlowEmptyTrashAsksFirst(t *testing.T) {
+	vm, fake := newUnlockedBot(t)
+	vm.handleUpdate(textUpdate("/trash"))
+
+	msg := fake.lastText(t)
+	if strings.Contains(msg, "Trash is empty") {
+		// Nothing to confirm — and nothing should be left armed either.
+		if vm.guard.HasPending(testUser) {
+			t.Error("an empty Trash must not arm a confirmation")
+		}
+		return
+	}
+	if !strings.Contains(msg, "/yes") || !strings.Contains(msg, "cannot be undone") {
+		t.Fatalf("expected a confirmation prompt, got %q", msg)
+	}
+	if !vm.guard.HasPending(testUser) {
+		t.Error("the pending action should be waiting for /yes")
+	}
+
+	vm.handleUpdate(textUpdate("/no"))
+	if vm.guard.HasPending(testUser) {
+		t.Error("/no must discard the pending action")
+	}
+}

@@ -46,7 +46,7 @@ While **Nullhand** is your ultimate command center for desktop, we've built a sp
 - **Accessibility-aware element control** — click UI elements by exact label, fuzzy substring match, or OCR fallback for Electron apps
 - **App launcher** — open GNOME/GTK/Snap applications by name (Linux) or `.app` bundles (macOS)
 - **File search & previews** — find files by name and see them as an image or a text excerpt before asking for the file; Spotlight and Quick Look on macOS, a bounded filesystem walk and built-in renderers elsewhere (see [File Search & Previews](#file-search--previews))
-- **macOS extras** — run Shortcuts, control volume and Music/Spotify, battery and power control, dark mode, and speech or notifications on the Mac's screen (see [macOS Extras](#macos-extras))
+- **macOS extras** — run Shortcuts, control volume and Music/Spotify, battery and power control, dark mode, Finder tasks (reveal, file details, Trash), and speech or notifications on the Mac's screen (see [macOS Extras](#macos-extras))
 - **File transfer (bidirectional)** — send files from your desktop to Telegram; receive files from Telegram to disk
 - **Persistent scheduled tasks (cron-like)** — set recurring screenshots, shell commands, or system info reports; supports daily, weekday, weekend, specific days (Mon/Wed/Fri), and multiple fire times per day; survives bot restarts via `~/.nullhand/schedule.json`
 - **Audit log** — every action appended to `~/.nullhand/audit.log`, with tokens, API keys and passwords masked before they reach disk
@@ -260,12 +260,17 @@ find invoice.pdf
 say dinner is ready
 lock
 dark mode
+info ~/Documents/report.pdf
+trash ~/Downloads/old.zip
+reveal ~/Desktop
 كم البطارية
 ارفع الصوت
 شغل اختصار تشغيل الاضاءة
 ابحث عن ملف الفاتورة
 قل الغداء جاهز
 اقفل الشاشة
+معلومات الملف ~/notes.txt
+انقل الى المهملات ~/Downloads/old.zip
 ```
 
 **Browser navigation** — opens the browser, waits for the window, clears the address bar, types the URL, and hits Enter
@@ -389,6 +394,9 @@ The bot replies with a numbered plan of every tool call (and recipe step) that *
 | `/dark` | — \| `on` \| `off` \| `status` | 🍎 Switch the system appearance |
 | `/say` | `<text>` | 🍎 Speak text out loud on the Mac |
 | `/notify` | `<text>` | 🍎 Show a notification on the Mac's screen |
+| `/reveal` | `<path>` | 🍎 Select the item in a Finder window |
+| `/info` | `<path>` | 🍎 Kind, size (folders totalled), item count, dates |
+| `/trash` | — \| `<path>` | 🍎 Move an item to the Trash, or empty it (asks for `/yes`) |
 
 🍎 = macOS only. On Linux these reply with a short "macOS only" note, and they are hidden from Telegram's command menu.
 
@@ -939,6 +947,27 @@ enabled.
 /dark              # toggle; /dark on, /dark off, /dark status
 ```
 
+### Finder tasks
+
+```
+/info ~/Documents/report.pdf   # 📄 report.pdf / PDF document · 1.2 MB / dates
+/info ~/Documents              # 📁 Folder · 34 item(s) · 5.0 GB
+/reveal ~/Desktop/plan.pdf     # opens Finder with the item selected
+/trash ~/Downloads/old.zip     # moves it to the Trash — recoverable
+/trash                         # shows what is in the Trash, then asks
+معلومات الملف ~/notes.txt
+```
+
+`/trash <path>` is the safe answer to "delete this": the item goes to the
+Trash and Finder can put it back, unlike `/shell rm`. `/trash` with no path
+reports what is in there and waits for `/yes` before emptying it, since that
+cannot be undone — the AI agent is not allowed to empty it at all.
+
+Folder sizes come from `du`, so a large folder is totalled in one pass rather
+than walked from Go. The item count comes from Finder, which answers with the
+Automation permission the bot already needs; reading `~/.Trash` directly would
+require Full Disk Access.
+
 ### Speech & notifications
 
 ```
@@ -957,6 +986,7 @@ whatever runs the bot (Terminal, iTerm, the binary itself); macOS asks once.
 |---|---|
 | Shortcuts | `shortcuts` (macOS 12+) |
 | Volume, media, dark mode, lock | `osascript`, plus Automation permission for System Events and the media app |
+| Finder tasks (`/reveal`, `/info`, `/trash`) | `osascript` with Automation permission for Finder; `mdls` and `du` are built in |
 | Spotlight search | `mdfind` (built in); `find` fallback needs nothing |
 | Quick Look previews | `qlmanage` (built in) |
 | Keep awake | `caffeinate` (built in) |
@@ -968,7 +998,8 @@ whatever runs the bot (Terminal, iTerm, the binary itself); macOS asks once.
 
 In AI agent mode the same capabilities are exposed as tools — `run_shortcut`,
 `list_shortcuts`, `control_audio`, `control_media`, `say_text`,
-`show_notification` and `mac_power` — so a cloud
+`show_notification`, `reveal_in_finder`, `file_info`, `manage_trash` and
+`mac_power` — so a cloud
 model can combine them ("if the battery is under 20%, tell me out loud"). They
 are only offered to the model on macOS, so a Linux run neither pays for the
 tokens nor sees tools it cannot use.

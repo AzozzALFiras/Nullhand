@@ -144,6 +144,34 @@ func macIntents() []intents.Intent {
 			},
 		},
 
+		// ── Finder ───────────────────────────────────────────────────
+		intents.Intent{
+			Re: regexp.MustCompile(`(?i)^(?:reveal|show\s+in\s+finder|(?:اظهر|أظهر|افتح)\s+في\s+(?:ال)?فايندر)\s+(.+?)\.?$`),
+			Build: func(m []string) []aimodel.ToolCall {
+				return call("reveal_in_finder", map[string]string{"path": intents.StripQuotes(m[1])})
+			},
+		},
+		intents.Intent{
+			// The argument has to look like a path, so an ordinary sentence
+			// starting with "info" is left to the other intents.
+			Re: regexp.MustCompile(`(?i)^(?:info|file\s+info|معلومات\s+(?:ال)?ملف)\s+((?:[~/.]|\S*[/.])\S*)\.?$`),
+			Build: func(m []string) []aimodel.ToolCall {
+				return call("file_info", map[string]string{"path": intents.StripQuotes(m[1])})
+			},
+		},
+		intents.Intent{
+			Re: regexp.MustCompile(`(?i)^(?:trash|المهملات|سلة\s+المهملات)\s*\??\.?$`),
+			Build: func(m []string) []aimodel.ToolCall {
+				return call("manage_trash", map[string]string{"action": "status"})
+			},
+		},
+		intents.Intent{
+			Re: regexp.MustCompile(`(?i)^(?:trash|move\s+to\s+trash|(?:انقل|ارسل|أرسل)\s+(?:الى|إلى)\s+(?:ال)?مهملات)\s+(.+?)\.?$`),
+			Build: func(m []string) []aimodel.ToolCall {
+				return call("manage_trash", map[string]string{"action": "move", "path": intents.StripQuotes(m[1])})
+			},
+		},
+
 		// ── Power & appearance ───────────────────────────────────────
 		intents.Intent{
 			Re: regexp.MustCompile(`(?i)^(?:battery(?:\s+status)?|البطارية|كم\s+البطارية|نسبة\s+البطارية)\s*\??\.?$`),

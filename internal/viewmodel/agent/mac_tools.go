@@ -97,6 +97,33 @@ func (vm *ViewModel) executeMacTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) (p
 	case "mac_power":
 		parts, err := macPower(args)
 		return parts, err, true
+
+	case "reveal_in_finder":
+		path := strings.TrimSpace(args["path"])
+		if path == "" {
+			e := fmt.Errorf("reveal_in_finder needs a path")
+			return failParts(e), e, true
+		}
+		if err := macsvc.Reveal(path); err != nil {
+			return failParts(err), err, true
+		}
+		return textParts("selected in Finder: " + path), nil, true
+
+	case "file_info":
+		path := strings.TrimSpace(args["path"])
+		if path == "" {
+			e := fmt.Errorf("file_info needs a path")
+			return failParts(e), e, true
+		}
+		info, err := macsvc.Info(path)
+		if err != nil {
+			return failParts(err), err, true
+		}
+		return infoParts(info.Summary()), nil, true
+
+	case "manage_trash":
+		parts, err := manageTrash(args)
+		return parts, err, true
 	}
 
 	return nil, nil, false
@@ -195,6 +222,39 @@ func setAppearance(action string) (bool, error) {
 	}
 }
 
+// manageTrash reports the Trash or moves an item into it. Emptying is
+// refused: it cannot be undone, so it needs the /trash + /yes flow where the
+// user sees what would be lost first.
+func manageTrash(args map[string]string) ([]aimodel.MessagePart, error) {
+	switch strings.TrimSpace(args["action"]) {
+	case "", "status":
+		state, err := macsvc.TrashStatus()
+		if err != nil {
+			return failParts(err), err
+		}
+		return infoParts(state.Summary()), nil
+
+	case "move":
+		path := strings.TrimSpace(args["path"])
+		if path == "" {
+			err := fmt.Errorf("manage_trash move needs a path")
+			return failParts(err), err
+		}
+		if err := macsvc.MoveToTrash(path); err != nil {
+			return failParts(err), err
+		}
+		return textParts("moved to the Trash (recoverable): " + path), nil
+
+	case "empty":
+		err := fmt.Errorf("emptying the Trash cannot be undone — tell the user to send /trash and confirm with /yes")
+		return failParts(err), err
+
+	default:
+		err := fmt.Errorf("manage_trash: unknown action %q (use status, move or empty)", args["action"])
+		return failParts(err), err
+	}
+}
+
 // macToolDefinitions describes the macOS tools for the AI. They are added to
 // the tool list only on macOS, so a Linux run neither pays for the tokens nor
 // lets the model call something that cannot work.
@@ -242,6 +302,29 @@ func macToolDefinitions() []aimodel.ToolDefinition {
 			Parameters: []aimodel.ToolParameter{
 				{Name: "text", Type: "string", Description: "Notification body", Required: true},
 				{Name: "title", Type: "string", Description: "Notification title (default Nullhand)"},
+			},
+		},
+		{
+			Name:        "reveal_in_finder",
+			Description: "Open a Finder window on the Mac with the given file or folder selected.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "path", Type: "string", Description: "Path to reveal", Required: true},
+			},
+		},
+		{
+			Name:        "file_info",
+			Description: "Describe a file or folder: kind, size (folders are totalled), item count, and the created and modified dates.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "path", Type: "string", Description: "Path to describe", Required: true},
+			},
+		},
+		{
+			Name: "manage_trash",
+			Description: "Report what is in the Trash (status) or move a file into it (move), which is " +
+				"recoverable and the safe way to delete something. Emptying the Trash is not available here.",
+			Parameters: []aimodel.ToolParameter{
+				{Name: "action", Type: "string", Description: "status or move", Required: true},
+				{Name: "path", Type: "string", Description: "Path to move to the Trash, for action move"},
 			},
 		},
 		{
