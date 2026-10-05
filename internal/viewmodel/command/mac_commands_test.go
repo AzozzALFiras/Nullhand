@@ -84,22 +84,6 @@ func TestSplitShortcutArgs(t *testing.T) {
 	}
 }
 
-func TestSplitFindArgs(t *testing.T) {
-	query, folder := splitFindArgs([]string{"tax", "report.pdf"})
-	if query != "tax report.pdf" || folder != "" {
-		t.Errorf("got query=%q folder=%q", query, folder)
-	}
-	query, folder = splitFindArgs([]string{"report.pdf", "in", "~/Documents"})
-	if query != "report.pdf" || folder != "~/Documents" {
-		t.Errorf("got query=%q folder=%q", query, folder)
-	}
-	// A trailing "in" is part of the name, not a folder marker.
-	query, folder = splitFindArgs([]string{"notes", "in"})
-	if query != "notes in" || folder != "" {
-		t.Errorf("got query=%q folder=%q", query, folder)
-	}
-}
-
 // Every macOS command must answer a bad invocation with usage help before it
 // touches the platform, so the reply is the same on macOS and Linux.
 func TestMacCommandsValidateBeforePlatform(t *testing.T) {
@@ -111,8 +95,6 @@ func TestMacCommandsValidateBeforePlatform(t *testing.T) {
 		{"/volume loud", vm.volume([]string{"loud"})},
 		{"/say", vm.say(nil)},
 		{"/notify", vm.notify(nil)},
-		{"/find", vm.find(nil)},
-		{"/preview", vm.preview(nil)},
 		{"/shortcuts run", vm.shortcuts([]string{"run"})},
 		{"/awake soon", vm.awake([]string{"soon"})},
 		{"/dark bogus", vm.darkMode([]string{"bogus"})},

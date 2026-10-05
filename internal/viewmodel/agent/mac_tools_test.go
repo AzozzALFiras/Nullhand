@@ -20,7 +20,6 @@ func TestMacToolsRejectBadArguments(t *testing.T) {
 		call aimodel.ToolCall
 	}{
 		{"shortcut without name", macCall("run_shortcut", map[string]string{})},
-		{"find without query", macCall("find_files", map[string]string{"folder": "~"})},
 		{"audio with unknown action", macCall("control_audio", map[string]string{"action": "eject"})},
 		{"audio set without number", macCall("control_audio", map[string]string{"action": "set", "percent": "loud"})},
 		{"power with unknown action", macCall("mac_power", map[string]string{"action": "explode"})},
@@ -37,14 +36,6 @@ func TestMacToolsRejectBadArguments(t *testing.T) {
 		if text := partsText(parts); !strings.HasPrefix(text, "⚠️") {
 			t.Errorf("%s: the offline parser only surfaces ⚠️/❌/ℹ️ results, got %q", c.name, text)
 		}
-	}
-}
-
-func TestPreviewFileNeedsPhotoDelivery(t *testing.T) {
-	vm := &ViewModel{}
-	_, err, handled := vm.executeMacTool(macCall("preview_file", map[string]string{"path": "/etc/hosts"}), nil)
-	if !handled || err == nil {
-		t.Errorf("without a photo callback the preview cannot be delivered: handled=%v err=%v", handled, err)
 	}
 }
 
@@ -87,7 +78,7 @@ func TestMacToolDefinitionsAreUsable(t *testing.T) {
 	// phrase would resolve to a tool the agent cannot execute.
 	for _, required := range []string{
 		"run_shortcut", "list_shortcuts", "control_audio", "control_media",
-		"say_text", "show_notification", "find_files", "preview_file", "mac_power",
+		"say_text", "show_notification", "mac_power",
 	} {
 		if !seen[required] {
 			t.Errorf("missing tool definition %q", required)

@@ -106,6 +106,8 @@ Your invisible hand on the Linux machine.
 /key &lt;shortcut&gt; — press key (e.g. cmd+t)
 /paste — get clipboard
 /copy &lt;text&gt; — set clipboard
+/find &lt;name&gt; [in &lt;folder&gt;] — search for files
+/preview &lt;path&gt; — see a file as an image or excerpt
 
 <b>2. AI agent mode</b> (natural language):
 Just type a task in plain English or Arabic. Example:
@@ -125,8 +127,6 @@ func MacHelp() string {
 /shortcuts — list Shortcuts; /shortcuts run &lt;name&gt; to run one
 /volume &lt;0-100|up|down|mute&gt; — system volume
 /media &lt;info|play|pause|next|prev&gt; — Music / Spotify
-/find &lt;name&gt; [in &lt;folder&gt;] — Spotlight file search
-/preview &lt;path&gt; — Quick Look image of a file
 /battery — charge level and time left
 /say &lt;text&gt; — speak out loud on the Mac
 /notify &lt;text&gt; — show a notification on the Mac

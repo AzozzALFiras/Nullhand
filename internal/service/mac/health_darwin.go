@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/AzozzALFiras/Nullhand/internal/service/proc"
 )
 
 // HealthLines describes the state of the macOS extras for /health: which
@@ -33,10 +35,10 @@ func HealthLines() []string {
 // spotlightIndexLine reports whether the data volume — where the home folder
 // actually lives — is indexed.
 func spotlightIndexLine() string {
-	out, err := run(defaultTimeout, "mdutil", "-s", "/System/Volumes/Data")
+	out, err := proc.Run(defaultTimeout, "mdutil", "-s", "/System/Volumes/Data")
 	switch {
 	case err != nil:
-		return "⚠️ Spotlight index: unknown (" + firstLine(err.Error()) + ")"
+		return "⚠️ Spotlight index: unknown (" + proc.FirstLine(err.Error()) + ")"
 	case strings.Contains(out, "Indexing enabled"):
 		return "✅ Spotlight index: enabled"
 	default:

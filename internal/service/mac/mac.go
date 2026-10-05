@@ -12,8 +12,6 @@ package mac
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -275,41 +273,6 @@ func parseTrack(app, raw string) (NowPlaying, error) {
 	return n, nil
 }
 
-// spotlightScopes lists the paths to try for mdfind's -onlyin, best first.
-// On APFS the home directory is a firmlink: everyone types /Users/me, but the
-// index stores /System/Volumes/Data/Users/me and -onlyin silently returns
-// nothing for the short form — the caller uses the first path that exists.
-func spotlightScopes(dir string) []string {
-	if dir == "" {
-		return nil
-	}
-	const dataVolume = "/System/Volumes/Data"
-	if strings.HasPrefix(dir, dataVolume) {
-		return []string{dir}
-	}
-	return []string{filepath.Join(dataVolume, dir), dir}
-}
-
-// mdfindArgs builds a filename search, scoped to one folder when scope is set.
-func mdfindArgs(query, scope string) []string {
-	args := []string{}
-	if scope != "" {
-		args = append(args, "-onlyin", scope)
-	}
-	return append(args, "-name", query)
-}
-
-// findArgs builds the `find` fallback used when Spotlight has nothing indexed
-// for the folder being searched. It stays shallow and skips dot-directories so
-// it returns in a reasonable time on a large home folder.
-func findArgs(query, dir string) []string {
-	return []string{
-		dir, "-maxdepth", "6",
-		"-not", "-path", "*/.*",
-		"-iname", "*" + query + "*",
-	}
-}
-
 // keepAwakeArgs builds the caffeinate invocation: block idle, display and disk
 // sleep for d. A zero or negative duration means "until cancelled".
 func keepAwakeArgs(d time.Duration) []string {
@@ -331,52 +294,4 @@ func sayText(text string) (string, error) {
 		text = string(runes[:maxSpokenChars]) + "…"
 	}
 	return text, nil
-}
-
-// limitResults trims a result list to limit entries (limit <= 0 means a
-// sensible default rather than unbounded output).
-func limitResults(paths []string, limit int) []string {
-	if limit <= 0 {
-		limit = 20
-	}
-	if len(paths) > limit {
-		return paths[:limit]
-	}
-	return paths
-}
-
-// nonEmptyLines splits tool output into trimmed, non-empty lines.
-func nonEmptyLines(out string) []string {
-	var lines []string
-	for _, l := range strings.Split(out, "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			lines = append(lines, l)
-		}
-	}
-	return lines
-}
-
-// expandPath resolves ~ and makes the path absolute.
-func expandPath(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", fmt.Errorf("path is empty")
-	}
-	if path == "~" || strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("expand %q: %w", path, err)
-		}
-		path = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
-	}
-	return filepath.Abs(path)
-}
-
-// expandDir is expandPath with the home folder as the default, which is the
-// right starting point for a file search from a phone.
-func expandDir(dir string) (string, error) {
-	if strings.TrimSpace(dir) == "" {
-		return os.UserHomeDir()
-	}
-	return expandPath(dir)
 }

@@ -45,7 +45,8 @@ While **Nullhand** is your ultimate command center for desktop, we've built a sp
 - **Mouse & keyboard automation** — click, double-click, right-click, drag, scroll, type, key shortcuts, clear field
 - **Accessibility-aware element control** — click UI elements by exact label, fuzzy substring match, or OCR fallback for Electron apps
 - **App launcher** — open GNOME/GTK/Snap applications by name (Linux) or `.app` bundles (macOS)
-- **macOS extras** — run Shortcuts, control volume and Music/Spotify, Spotlight file search with Quick Look previews, battery and power control, dark mode, and speech or notifications on the Mac's screen (see [macOS Extras](#macos-extras))
+- **File search & previews** — find files by name and see them as an image or a text excerpt before asking for the file; Spotlight and Quick Look on macOS, a bounded filesystem walk and built-in renderers elsewhere (see [File Search & Previews](#file-search--previews))
+- **macOS extras** — run Shortcuts, control volume and Music/Spotify, battery and power control, dark mode, and speech or notifications on the Mac's screen (see [macOS Extras](#macos-extras))
 - **File transfer (bidirectional)** — send files from your desktop to Telegram; receive files from Telegram to disk
 - **Persistent scheduled tasks (cron-like)** — set recurring screenshots, shell commands, or system info reports; supports daily, weekday, weekend, specific days (Mon/Wed/Fri), and multiple fire times per day; survives bot restarts via `~/.nullhand/schedule.json`
 - **Audit log** — every action appended to `~/.nullhand/audit.log`, with tokens, API keys and passwords masked before they reach disk
@@ -379,8 +380,8 @@ The bot replies with a numbered plan of every tool call (and recipe step) that *
 | `/shortcuts` | — \| `run <name> [-- <input>]` | 🍎 List or run macOS Shortcuts |
 | `/volume` | — \| `0-100` \| `+10` \| `-10` \| `up` \| `down` \| `mute` \| `unmute` | 🍎 System output volume |
 | `/media` | `info` \| `play` \| `pause` \| `next` \| `prev` | 🍎 Control Music or Spotify |
-| `/find` | `<name>` [`in <folder>`] | 🍎 Spotlight file search (falls back to a file walk) |
-| `/preview` | `<path>` | 🍎 Send a Quick Look image of a file |
+| `/find` | `<name>` [`in <folder>`] | Search for files by name |
+| `/preview` | `<path>` | See a file as an image or a text excerpt |
 | `/battery` | — | 🍎 Charge level, state, time remaining |
 | `/lock` | — | 🍎 Lock the screen |
 | `/sleep` | — | 🍎 Put the Mac to sleep |
@@ -844,6 +845,43 @@ The OCR languages line reflects what `tesseract --list-langs` returned at startu
 
 ---
 
+## File Search & Previews
+
+```
+/find invoice.pdf                  # search the home folder by name
+/find report in ~/Documents        # scope the search
+/preview ~/Desktop/plan.pdf        # first page as an image
+/preview ~/.ssh/config             # a text file comes back as an excerpt
+ابحث عن ملف الفاتورة
+```
+
+**Search.** On macOS Spotlight answers first, then a bounded `find` walk takes
+over when the index has nothing for that folder — on an unindexed or
+privacy-excluded folder Spotlight returns nothing at all, which would otherwise
+read as "no such file". Everywhere else the walk is the only path. It stays
+within 6 levels and skips dot-directories, so a large home folder still
+answers quickly. `/health` reports the Spotlight index state on macOS.
+
+**Previews.** What comes back depends on the file:
+
+| File | macOS | Linux |
+|---|---|---|
+| PNG, JPEG, GIF, WebP, BMP | Quick Look render | the image itself |
+| PDF | Quick Look render | first page via `pdftoppm` (poppler-utils) |
+| HEIC, TIFF, SVG | Quick Look render | converted by ImageMagick, if installed |
+| Text, source, config, logs | Quick Look render | first 40 lines as an excerpt |
+| Anything else | falls back to the Linux behaviour | a clear "no preview" reply |
+
+Text files are detected by content, not extension, so `.conf`, `.log` and
+unfamiliar source files preview fine. Images over ~9 MB are refused rather
+than failing inside Telegram, and a folder is answered with a pointer to
+`browse <path>`.
+
+In AI agent mode these are the `find_files` and `preview_file` tools, available
+on every platform.
+
+---
+
 ## macOS Extras
 
 On macOS, Nullhand exposes the things that make a Mac a Mac. Everything here
@@ -882,22 +920,12 @@ for a track never launches an app on its own, but `/media play` with nothing
 running starts Music first. Setting a level also unmutes — a raised volume that
 stays silent looks broken.
 
-### Spotlight search & Quick Look
+### Spotlight & Quick Look
 
-```
-/find invoice.pdf
-/find report in ~/Documents
-/preview ~/Desktop/plan.pdf        # Quick Look rendered as a photo
-```
-
-`/find` asks Spotlight first and falls back to a bounded `find` walk when the
-folder is not indexed — on an unindexed or privacy-excluded folder Spotlight
-returns nothing at all, which would otherwise read as "no such file". `/health`
-shows whether the index is enabled.
-
-`/preview` renders anything Quick Look can preview (PDF, image, document,
-source file) as a PNG and sends it as a photo, so you can check a file before
-asking for the file itself.
+`/find` and `/preview` are not macOS-only — see
+[File Search & Previews](#file-search--previews). On a Mac they use Spotlight
+and Quick Look, which is why `/health` reports whether the Spotlight index is
+enabled.
 
 ### Power & appearance
 
@@ -940,7 +968,7 @@ whatever runs the bot (Terminal, iTerm, the binary itself); macOS asks once.
 
 In AI agent mode the same capabilities are exposed as tools — `run_shortcut`,
 `list_shortcuts`, `control_audio`, `control_media`, `say_text`,
-`show_notification`, `find_files`, `preview_file` and `mac_power` — so a cloud
+`show_notification` and `mac_power` — so a cloud
 model can combine them ("if the battery is under 20%, tell me out loud"). They
 are only offered to the model on macOS, so a Linux run neither pays for the
 tokens nor sees tools it cannot use.

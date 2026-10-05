@@ -507,6 +507,8 @@ func (vm *ViewModel) buildToolDefinitions() []aimodel.ToolDefinition {
 		},
 	}
 
+	tools = append(tools, searchToolDefinitions()...)
+
 	// macOS extras — only offered where they can actually run.
 	if macsvc.Available() {
 		tools = append(tools, macToolDefinitions()...)

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/AzozzALFiras/Nullhand/internal/service/proc"
 )
 
 // Volume returns the system output volume and mute state.
@@ -97,7 +99,7 @@ func Media(action string) (string, error) {
 	}
 	app, err := runningMediaApp()
 	if errors.Is(err, ErrNoMediaApp) && isPlayCommand(command) {
-		if _, openErr := run(defaultTimeout, "open", "-a", "Music"); openErr != nil {
+		if _, openErr := proc.Run(defaultTimeout, "open", "-a", "Music"); openErr != nil {
 			return "", err // report the original "nothing is running"
 		}
 		app, err = waitForMediaApp(mediaLaunchWait)

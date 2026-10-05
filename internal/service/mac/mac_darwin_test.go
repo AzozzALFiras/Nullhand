@@ -3,10 +3,7 @@
 package mac
 
 import (
-	"bytes"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -73,72 +70,6 @@ func TestRunShortcutRequiresName(t *testing.T) {
 	}
 }
 
-// Spotlight has nothing indexed for many developer folders, so this doubles as
-// a test of the `find` fallback: the file exists and must be found either way.
-func TestFindLocatesFileInRepo(t *testing.T) {
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	repoRoot := filepath.Clean(filepath.Join(wd, "..", "..", ".."))
-
-	hits, err := Find("mac_other.go", repoRoot, 10)
-	if err != nil {
-		t.Fatalf("Find: %v", err)
-	}
-	found := false
-	for _, h := range hits {
-		if strings.HasSuffix(h, "mac_other.go") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected to find mac_other.go under %s, got %q", repoRoot, hits)
-	}
-}
-
-func TestFindRejectsEmptyQuery(t *testing.T) {
-	if _, err := Find("", "", 10); err == nil {
-		t.Error("an empty query must return an error instead of listing everything")
-	}
-}
-
-func TestFindRespectsLimit(t *testing.T) {
-	wd, _ := os.Getwd()
-	repoRoot := filepath.Clean(filepath.Join(wd, "..", "..", ".."))
-	hits, err := Find(".go", repoRoot, 3)
-	if err != nil {
-		t.Fatalf("Find: %v", err)
-	}
-	if len(hits) > 3 {
-		t.Errorf("limit ignored: got %d hits", len(hits))
-	}
-}
-
-func TestPreviewProducesPNG(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "note.txt")
-	if err := os.WriteFile(path, []byte("hello from nullhand\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	data, err := Preview(path)
-	if err != nil {
-		t.Fatalf("Preview: %v", err)
-	}
-	if !bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n")) {
-		t.Errorf("expected PNG bytes, got %d bytes starting with %q", len(data), data[:min(8, len(data))])
-	}
-}
-
-func TestPreviewRejectsFolderAndMissingFile(t *testing.T) {
-	if _, err := Preview(t.TempDir()); err == nil {
-		t.Error("a folder has no Quick Look thumbnail to send")
-	}
-	if _, err := Preview(filepath.Join(t.TempDir(), "nope.pdf")); err == nil {
-		t.Error("a missing file must be reported before qlmanage runs")
-	}
-}
-
 func TestKeepAwakeStartsAndStops(t *testing.T) {
 	if _, ok := KeepAwakeUntil(); ok {
 		t.Skip("a keep-awake is already running; leaving it alone")
@@ -191,11 +122,4 @@ func TestHealthLinesDescribeTooling(t *testing.T) {
 			t.Errorf("health output missing %q:\n%s", want, lines)
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

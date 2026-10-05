@@ -94,40 +94,6 @@ func (vm *ViewModel) executeMacTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) (p
 		}
 		return textParts("notification shown on the Mac"), nil, true
 
-	case "find_files":
-		query := strings.TrimSpace(args["query"])
-		if query == "" {
-			e := fmt.Errorf("find_files needs a query")
-			return failParts(e), e, true
-		}
-		limit, _ := strconv.Atoi(args["limit"])
-		if limit <= 0 {
-			limit = 20
-		}
-		hits, err := macsvc.Find(query, args["folder"], limit)
-		if err != nil {
-			return failParts(err), err, true
-		}
-		if len(hits) == 0 {
-			return infoParts(fmt.Sprintf("No files matching %q.", query)), nil, true
-		}
-		return infoParts(fmt.Sprintf("%d match(es) for %q:\n%s", len(hits), query, strings.Join(hits, "\n"))), nil, true
-
-	case "preview_file":
-		if sendPhoto == nil {
-			e := fmt.Errorf("preview delivery is not available in this context")
-			return failParts(e), e, true
-		}
-		path := strings.TrimSpace(args["path"])
-		png, err := macsvc.Preview(path)
-		if err != nil {
-			return failParts(err), err, true
-		}
-		if err := sendPhoto(png, "🖼 "+path); err != nil {
-			return failParts(err), err, true
-		}
-		return textParts("preview delivered to the user (the AI cannot see it)"), nil, true
-
 	case "mac_power":
 		parts, err := macPower(args)
 		return parts, err, true
@@ -276,24 +242,6 @@ func macToolDefinitions() []aimodel.ToolDefinition {
 			Parameters: []aimodel.ToolParameter{
 				{Name: "text", Type: "string", Description: "Notification body", Required: true},
 				{Name: "title", Type: "string", Description: "Notification title (default Nullhand)"},
-			},
-		},
-		{
-			Name: "find_files",
-			Description: "Find files by name using Spotlight, falling back to a file walk when " +
-				"the folder is not indexed. Returns matching paths.",
-			Parameters: []aimodel.ToolParameter{
-				{Name: "query", Type: "string", Description: "Part of the file name", Required: true},
-				{Name: "folder", Type: "string", Description: "Folder to search (default: the home folder)"},
-				{Name: "limit", Type: "string", Description: "Maximum number of results (default 20)"},
-			},
-		},
-		{
-			Name: "preview_file",
-			Description: "Render a Quick Look preview of a file (PDF, image, document) and deliver it " +
-				"to the user's Telegram chat as a photo. You will NOT see the image.",
-			Parameters: []aimodel.ToolParameter{
-				{Name: "path", Type: "string", Description: "Path to the file", Required: true},
 			},
 		},
 		{

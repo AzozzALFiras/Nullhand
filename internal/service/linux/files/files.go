@@ -54,14 +54,39 @@ func List(path string) ([]string, error) {
 	return names, nil
 }
 
-// expand resolves ~ to the user home directory.
+// expand resolves ~ to the user home directory. Relative paths are left
+// relative: Read and List accept them as the user typed them.
 func expand(path string) (string, error) {
-	if strings.HasPrefix(path, "~/") {
+	if path == "~" || strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("expand path: %w", err)
 		}
-		return filepath.Join(home, path[2:]), nil
+		return filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/")), nil
 	}
 	return path, nil
+}
+
+// ExpandPath resolves ~ and returns an absolute path. Services that hand the
+// path to another process (find, qlmanage, Finder) need it absolute, since
+// those run with their own working directory.
+func ExpandPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("path is empty")
+	}
+	expanded, err := expand(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(expanded)
+}
+
+// ExpandDir is ExpandPath with the home directory as the default, which is
+// the right starting point for a file search from a phone.
+func ExpandDir(dir string) (string, error) {
+	if strings.TrimSpace(dir) == "" {
+		return os.UserHomeDir()
+	}
+	return ExpandPath(dir)
 }

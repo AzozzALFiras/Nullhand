@@ -399,7 +399,10 @@ func (vm *ViewModel) executeTool(tc aimodel.ToolCall, sendPhoto PhotoFunc) ([]ai
 
 	}
 
-	// macOS extras live in mac_tools.go.
+	// File search lives in search_tools.go, the macOS extras in mac_tools.go.
+	if parts, err, handled := vm.executeSearchTool(tc, sendPhoto); handled {
+		return parts, err
+	}
 	if parts, err, handled := vm.executeMacTool(tc, sendPhoto); handled {
 		return parts, err
 	}

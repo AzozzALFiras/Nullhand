@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/AzozzALFiras/Nullhand/internal/service/proc"
 )
 
 // shortcutTimeout is generous: a Shortcut may talk to HomeKit, wait on a
@@ -16,7 +18,7 @@ const shortcutTimeout = 2 * time.Minute
 
 // ListShortcuts returns the names of the Shortcuts on this Mac.
 func ListShortcuts() ([]string, error) {
-	out, err := run(defaultTimeout, "shortcuts", "list")
+	out, err := proc.Run(defaultTimeout, "shortcuts", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +54,7 @@ func RunShortcut(name, input string) (string, error) {
 	outputPath := filepath.Join(dir, "output.txt")
 	args = append(args, "--output-path", outputPath, "--output-type", "public.plain-text")
 
-	if _, err := run(shortcutTimeout, "shortcuts", args...); err != nil {
+	if _, err := proc.Run(shortcutTimeout, "shortcuts", args...); err != nil {
 		return "", err
 	}
 

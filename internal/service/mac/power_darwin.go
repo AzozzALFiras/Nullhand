@@ -7,11 +7,13 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/AzozzALFiras/Nullhand/internal/service/proc"
 )
 
 // BatteryStatus reports the battery level and charging state.
 func BatteryStatus() (Battery, error) {
-	out, err := run(defaultTimeout, "pmset", "-g", "batt")
+	out, err := proc.Run(defaultTimeout, "pmset", "-g", "batt")
 	if err != nil {
 		return Battery{}, err
 	}
@@ -26,13 +28,13 @@ func LockScreen() error {
 	if _, err := osa(`tell application "System Events" to keystroke "q" using {command down, control down}`); err == nil {
 		return nil
 	}
-	_, err := run(defaultTimeout, "pmset", "displaysleepnow")
+	_, err := proc.Run(defaultTimeout, "pmset", "displaysleepnow")
 	return err
 }
 
 // SleepNow puts the Mac to sleep.
 func SleepNow() error {
-	_, err := run(defaultTimeout, "pmset", "sleepnow")
+	_, err := proc.Run(defaultTimeout, "pmset", "sleepnow")
 	return err
 }
 

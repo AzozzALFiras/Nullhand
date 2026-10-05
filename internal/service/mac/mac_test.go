@@ -1,7 +1,6 @@
 package mac
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -205,44 +204,6 @@ func TestParseTrackStopped(t *testing.T) {
 	}
 }
 
-func TestSpotlightScopes(t *testing.T) {
-	// The data-volume path comes first: -onlyin silently finds nothing for the
-	// short /Users form on APFS.
-	got := spotlightScopes("/Users/me/Documents")
-	if len(got) != 2 || got[0] != "/System/Volumes/Data/Users/me/Documents" || got[1] != "/Users/me/Documents" {
-		t.Errorf("got %q", got)
-	}
-	if got := spotlightScopes("/System/Volumes/Data/Users/me"); len(got) != 1 {
-		t.Errorf("an already-resolved path needs no alternative, got %q", got)
-	}
-	if got := spotlightScopes(""); got != nil {
-		t.Errorf("no folder means no scope, got %q", got)
-	}
-}
-
-func TestMdfindArgs(t *testing.T) {
-	got := strings.Join(mdfindArgs("report.pdf", "/System/Volumes/Data/Users/me"), " ")
-	if got != "-onlyin /System/Volumes/Data/Users/me -name report.pdf" {
-		t.Errorf("got %q", got)
-	}
-	if got := strings.Join(mdfindArgs("report.pdf", ""), " "); got != "-name report.pdf" {
-		t.Errorf("unscoped search should search the whole index, got %q", got)
-	}
-}
-
-func TestFindArgs(t *testing.T) {
-	got := findArgs("report", "/Users/me")
-	joined := strings.Join(got, " ")
-	if got[0] != "/Users/me" {
-		t.Errorf("find must start at the folder, got %q", got[0])
-	}
-	for _, want := range []string{"-maxdepth 6", "-iname *report*", "-not -path */.*"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("args %q missing %q", joined, want)
-		}
-	}
-}
-
 func TestKeepAwakeArgs(t *testing.T) {
 	if got := strings.Join(keepAwakeArgs(0), " "); got != "-dimsu" {
 		t.Errorf("no duration means until cancelled, got %q", got)
@@ -263,45 +224,6 @@ func TestSayText(t *testing.T) {
 	}
 	if n := len([]rune(got)); n != maxSpokenChars+1 { // +1 for the ellipsis
 		t.Errorf("text should be truncated to %d runes plus an ellipsis, got %d", maxSpokenChars, n)
-	}
-}
-
-func TestNonEmptyLines(t *testing.T) {
-	got := nonEmptyLines("/a/b\n\n  /c/d  \n")
-	if len(got) != 2 || got[0] != "/a/b" || got[1] != "/c/d" {
-		t.Errorf("got %q", got)
-	}
-}
-
-func TestLimitResults(t *testing.T) {
-	ten := make([]string, 10)
-	if got := limitResults(ten, 3); len(got) != 3 {
-		t.Errorf("got %d results, want 3", len(got))
-	}
-	if got := limitResults(ten, 0); len(got) != 10 {
-		t.Errorf("a non-positive limit falls back to the default, got %d", len(got))
-	}
-}
-
-func TestExpandPath(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	got, err := expandPath("~/Documents/x.pdf")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(home, "Documents/x.pdf"); got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-	if _, err := expandPath("  "); err == nil {
-		t.Error("empty path must return an error")
-	}
-
-	// A search with no folder starts at home.
-	dir, err := expandDir("")
-	if err != nil || dir != home {
-		t.Errorf("expandDir(\"\") = %q, %v; want %q", dir, err, home)
 	}
 }
 
